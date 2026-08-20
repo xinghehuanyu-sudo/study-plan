@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#f7f4ee" />
   <title>学习计划时间轴</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -12,16 +14,19 @@
     <header class="toolbar">
       <div class="brand"><span class="brand-mark">学</span><div><strong>学习日志</strong><small>专注每一天</small></div></div>
       <nav class="primary-nav" aria-label="主要功能">
-        <button id="addEventBtn" class="tool-btn primary">在时间轴选时间</button>
-        <button id="subjectsBtn" class="tool-btn">学科管理</button>
-        <button id="statsBtn" class="tool-btn">统计</button>
-        <button id="editLayoutBtn" class="tool-btn">编辑布局</button>
+        <button id="addEventBtn" class="tool-btn primary" title="在时间轴选时间"><span class="tool-glyph">＋</span><span class="tool-label">选时间</span></button>
+        <button id="flashcardsBtn" class="tool-btn" title="闪卡复习"><span class="tool-glyph">▤</span><span class="tool-label">闪卡</span></button>
+        <button id="leftoverBtn" class="tool-btn" title="遗留待清池"><span class="tool-glyph">✓</span><span class="tool-label">待清池</span></button>
+        <button id="subjectsBtn" class="tool-btn" title="学科管理"><span class="tool-glyph">科</span><span class="tool-label">学科</span></button>
+        <button id="statsBtn" class="tool-btn" title="学习统计"><span class="tool-glyph">⌁</span><span class="tool-label">统计</span></button>
+        <button id="editLayoutBtn" class="tool-btn" title="编辑布局"><span class="tool-glyph">⤢</span><span class="tool-label">布局</span></button>
       </nav>
       <div class="toolbar-overflow">
         <button id="toolbarMenuBtn" class="menu-toggle" aria-expanded="false" aria-label="更多操作">•••</button>
         <div id="toolbarMenu" class="toolbar-menu hidden">
           <button id="settingsBtn">设置</button>
-          <button id="exportImageBtn">导出图片</button>
+          <button id="exportImageBtn">分享学习日报</button>
+          <button id="installAppBtn" class="hidden">安装到桌面</button>
           <button id="exportDataBtn">导出数据</button>
           <button id="importDataBtn">导入数据</button>
           <span class="menu-divider"></span>
@@ -59,12 +64,14 @@
           <div class="section-heading"><div><span class="eyebrow">FOCUS</span><h2>专注计时</h2></div><span id="focusStatus" class="status-pill">未开始</span></div>
           <div id="focusSubjects" class="subject-list"></div>
           <div class="focus-controls">
+            <label>任务类型<select id="focusTaskType"><option value="learn">学习任务</option><option value="review">复习任务</option></select></label>
             <label>计时方式<select id="focusTimerType"><option value="countup">正计时</option><option value="countdown">倒计时</option></select></label>
             <label id="focusDurationWrap" class="hidden">时长<select id="focusDuration"><option value="15">15 分钟</option><option value="25" selected>25 分钟</option><option value="45">45 分钟</option><option value="50">50 分钟</option><option value="60">60 分钟</option><option value="custom">自定义</option></select></label>
             <label id="focusCustomDurationWrap" class="hidden">自定义分钟<input id="focusCustomDuration" type="number" min="1" max="600" value="90" /></label>
           </div>
           <div id="focusClock" class="focus-clock">00:00:00</div>
           <p id="focusSubjectLabel" class="focus-subject-label">选择一个学科即可开始</p>
+          <textarea id="focusLiveNote" class="focus-live-note hidden" rows="2" maxlength="1200" placeholder="随手记录关键点、疑问或闪卡素材…"></textarea>
           <div class="focus-running-actions">
             <button id="enterImmersionBtn" class="tool-btn hidden">沉浸界面</button>
             <button id="stopFocusBtn" class="tool-btn focus-stop hidden">结束专注</button>
@@ -74,7 +81,10 @@
         <div id="focusReviewHandle" class="layout-resize-handle horizontal" aria-hidden="true"></div>
 
         <section class="review-card">
-          <div class="review-header"><h2>复习任务</h2><div class="filter-row"><button class="filter-btn active" data-filter="today">今天</button><button class="filter-btn" data-filter="week">本周</button><button class="filter-btn" data-filter="month">本月</button><button class="filter-btn" data-filter="all">全部</button></div></div>
+          <div class="review-header">
+            <div class="review-heading-row"><div><span class="eyebrow">REVIEW</span><h2>每日复习清单</h2></div><span id="reviewListSummary" class="review-list-summary">0 项</span></div>
+            <div class="filter-row"><button class="filter-btn active" data-filter="today">当天清单</button><button class="filter-btn" data-filter="overdue">已过期</button><button class="filter-btn" data-filter="all">全部</button></div>
+          </div>
           <div id="reviewList" class="review-list"></div>
         </section>
       </aside>
@@ -87,12 +97,28 @@
       <div class="modal-body event-grid">
         <div class="time-preview span-2"><span>已选时间</span><strong id="eventTimeSummary">尚未选择时间</strong></div>
         <label>区域<select id="eventHalfZone"><option value="plan">计划区</option><option value="record">记录区</option></select></label>
-        <label>任务类型<select id="eventTaskType"><option value="learn">学习任务</option><option value="review">复习任务</option><option value="custom">自定义</option></select></label>
+        <label>事件类型<select id="eventTaskType"><option value="learn">学习任务</option><option value="review">复习任务</option><option value="custom">自定义</option></select></label>
         <label>一级学科<select id="eventCategory"></select></label>
         <label>二级学科<select id="eventSubcategory"><option value="">不继续选择</option></select></label>
         <label>三级学科<select id="eventTopic"><option value="">不继续选择</option></select></label>
         <label>事件颜色<input id="eventColor" type="color" /></label>
-        <label class="span-2">内容<input id="eventTextContent" type="text" maxlength="100" placeholder="例如：高等数学 - 极限练习" /></label>
+        <fieldset class="span-2 action-type-field">
+          <legend>学习动作（可多选）</legend>
+          <div class="action-type-options">
+            <label><input class="event-action-type" type="checkbox" value="video" /> 视频</label>
+            <label><input class="event-action-type" type="checkbox" value="reading" /> 阅读</label>
+            <label><input class="event-action-type" type="checkbox" value="practice" /> 习题</label>
+            <label><input class="event-action-type" type="checkbox" value="memorize" /> 背诵</label>
+            <label><input class="event-action-type" type="checkbox" value="review" /> 复习</label>
+          </div>
+        </fieldset>
+        <label class="span-2">知识点名称<input id="eventKnowledgePoint" type="text" maxlength="100" placeholder="例如：多元函数偏导与全微分" /></label>
+        <label>资料定位<input id="eventMaterialLocation" type="text" maxlength="100" placeholder="例如：讲义 P69-P83 / 第 4 章" /></label>
+        <label>掌握程度<select id="eventMastery"><option value="unknown">尚未判断</option><option value="weak">薄弱</option><option value="partial">部分掌握</option><option value="mastered">已掌握</option></select></label>
+        <label class="span-2">学习摘要<input id="eventTextContent" type="text" maxlength="160" placeholder="一句话记录本次完成了什么" /></label>
+        <label class="span-2">学习笔记<textarea id="eventNotes" rows="3" maxlength="1200" placeholder="记录推导、易错点、自己的理解；不会显示在时间轴中"></textarea></label>
+        <label class="span-2">遗留内容<textarea id="eventLeftover" rows="2" maxlength="240" placeholder="未完成的习题、仍需解决的问题；没有可留空"></textarea></label>
+        <div class="span-2 event-flags"><label><input id="eventImportant" type="checkbox" /> 标记为重点</label></div>
         <details class="span-2 advanced-fields"><summary>调整时间与外观</summary><div class="time-input-grid">
           <label>开始时间<div class="time-inline"><input id="eventStartHour" type="number" min="0" max="23" /><span>:</span><input id="eventStartMinute" type="number" min="0" max="59" /></div></label>
           <label>结束时间<div class="time-inline"><input id="eventEndHour" type="number" min="0" max="23" /><span>:</span><input id="eventEndMinute" type="number" min="0" max="59" /></div></label>
@@ -119,9 +145,12 @@
           <label>事件轴位置<select id="settingEventPlacement"><option value="bottom">区域下方</option><option value="center">区域中间</option></select></label>
           <label>10 分钟点大小<input id="settingDotSize" type="range" min="1" max="5" step=".5" /></label>
           <label>10 分钟点透明度<input id="settingDotOpacity" type="range" min=".05" max=".8" step=".05" /></label>
+          <label>事件箭头粗细<input id="settingArrowWidth" type="range" min="1" max="5" step=".25" /></label>
+          <label>箭头尖大小<input id="settingArrowSize" type="range" min="3" max="12" step="1" /></label>
         </div>
-        <div class="check-row"><label><input id="settingShowDots" type="checkbox" /> 默认显示 10 分钟点</label><label><input id="settingDividerDrag" type="checkbox" /> 允许直接拖动中间时间线</label></div>
+        <div class="check-row"><label><input id="settingShowDots" type="checkbox" /> 默认显示 10 分钟点</label><label><input id="settingDividerDrag" type="checkbox" /> 允许直接拖动中间时间线</label><label><input id="settingCompactToolbar" type="checkbox" /> 工具栏仅显示图标</label></div>
         <label class="block-label">隐藏时段（支持多个）<textarea id="settingHiddenHours" rows="2" placeholder="例如：0-7,23-24"></textarea></label></section>
+        <div class="settings-inline-action"><button id="compactTimelinePresetBtn" class="tool-btn">应用 7–22 紧凑视图</button><span>自动隐藏 0–7、22–24，并压缩小时高度。</span></div>
 
         <section><h4>复习规则</h4><div class="settings-grid">
           <label>规则模板<select id="settingReviewPreset"><option value="common">常用间隔</option><option value="ebbinghaus">艾宾浩斯</option><option value="custom">自定义</option></select></label>
@@ -134,9 +163,20 @@
           <label>快速选点快捷键<input id="settingShortcut" type="text" placeholder="Ctrl+Enter" /></label>
           <label>倒数日名称<input id="settingCountdownName" type="text" placeholder="距离考试" /></label>
           <label>倒数日日期<input id="settingCountdownDate" type="date" /></label>
-          <label>沉浸背景<select id="settingImmersionTheme"><option value="plain">纯白</option><option value="landscape">自然风景</option><option value="anime">动漫柔光</option><option value="star">星空</option><option value="sky">天空</option><option value="pet">萌宠暖色</option></select></label>
+          <label>沉浸背景<select id="settingImmersionTheme"><option value="plain">纯白</option><option value="landscape">自然风景</option><option value="anime">动漫柔光</option><option value="star">星空</option><option value="sky">天空</option><option value="pet">萌宠暖色</option><option value="custom">自定义图片</option></select></label>
           <label>背景透明度<input id="settingImmersionOpacity" type="range" min=".15" max="1" step=".05" /></label>
-        </div><div class="check-row"><label><input id="settingShowCountdown" type="checkbox" /> 显示倒数日</label><label><input id="settingShowQuote" type="checkbox" /> 显示励志句子</label></div></section>
+          <label>倒数日字号<input id="settingCountdownSize" type="range" min="18" max="64" step="2" /></label>
+          <label>倒数日位置<select id="settingCountdownPosition"><option value="below">计时器下方</option><option value="top">页面上方</option><option value="bottom">页面下方</option></select></label>
+          <label class="span-2">背景图片网址<input id="settingImmersionBackground" type="url" placeholder="https://…（也可以选择本地图片）" /></label>
+        </div><div class="check-row"><label><input id="settingShowCountdown" type="checkbox" /> 显示倒数日</label><label><input id="settingShowQuote" type="checkbox" /> 显示励志句子</label></div>
+        <div class="settings-inline-action"><label class="file-picker">选择本地背景<input id="settingLocalBackground" type="file" accept="image/*" hidden /></label><button id="clearLocalBackgroundBtn" class="tool-btn">清除背景图</button><span id="localBackgroundStatus">尚未设置图片</span></div></section>
+
+        <section><h4>提醒与系统通知</h4><div class="settings-grid">
+          <label>提示音<select id="settingSoundType"><option value="cheer">欢呼旋律</option><option value="chime">清亮提示</option><option value="bell">铃声</option></select></label>
+          <label>播放时长（秒）<input id="settingSoundDuration" type="number" min=".5" max="10" step=".5" /></label>
+          <label>音量<input id="settingSoundVolume" type="range" min="0" max="1" step=".05" /></label>
+        </div><div class="check-row"><label><input id="settingSoundEnabled" type="checkbox" /> 启用提示音</label><label><input id="settingNotificationsEnabled" type="checkbox" /> 启用系统通知</label></div>
+        <div class="settings-inline-action"><button id="testSoundBtn" class="tool-btn">试听</button><button id="enableNotificationsBtn" class="tool-btn">授权并测试通知</button><span>浏览器需保持运行；系统勿扰模式可能拦截通知。</span></div></section>
 
         <section class="danger-zone"><div><h4>数据操作</h4><p>清空后可通过撤销恢复，刷新页面后将无法撤销。</p></div><button id="clearEventsBtn" class="tool-btn danger">清空全部事件</button></section>
       </div>
@@ -175,10 +215,63 @@
     </div>
   </div>
 
+  <div id="planReminderModal" class="modal plan-reminder-modal hidden" aria-hidden="true" aria-live="assertive">
+    <div class="modal-card plan-reminder-card">
+      <div class="plan-reminder-accent"></div>
+      <div class="modal-body plan-reminder-body">
+        <div class="plan-reminder-icon">▶</div>
+        <div class="plan-reminder-copy"><span class="eyebrow">PLAN READY</span><h3>计划时间到了</h3><p>现在开始，网站会自动带入任务信息并启动学习计时。</p></div>
+        <div class="plan-reminder-event">
+          <div class="plan-reminder-top"><span id="planReminderSubject" class="plan-reminder-subject">学科</span><strong id="planReminderTime">00:00 - 00:00</strong></div>
+          <h4 id="planReminderTitle">学习任务</h4>
+          <div id="planReminderActions" class="plan-reminder-tags"></div>
+          <p id="planReminderLocation" class="plan-reminder-location"></p>
+        </div>
+      </div>
+      <div class="modal-footer plan-reminder-actions"><button id="planReminderIgnoreBtn" class="tool-btn">忽略本次</button><button id="planReminderSnoozeBtn" class="tool-btn">10 分钟后提醒</button><button id="planReminderStartBtn" class="tool-btn primary">一键开始学习</button></div>
+    </div>
+  </div>
+
+  <div id="reviewDetailModal" class="modal hidden" aria-hidden="true">
+    <div class="modal-card review-detail-card">
+      <div class="modal-header"><div><span class="eyebrow">REVIEW DETAIL</span><h3 id="reviewDetailTitle">复习详情</h3></div><button class="icon-btn" data-close="reviewDetailModal" aria-label="关闭">×</button></div>
+      <div class="modal-body review-detail-body">
+        <section class="review-detail-section basic"><div class="review-detail-section-title"><span>01</span><h4>基础信息</h4></div><div id="reviewDetailBasic" class="review-detail-content"></div></section>
+        <section class="review-detail-section learning"><div class="review-detail-section-title"><span>02</span><h4>学习信息</h4></div><div id="reviewDetailLearning" class="review-detail-content"></div></section>
+        <section class="review-detail-section history"><div class="review-detail-section-title"><span>03</span><h4>复习情况</h4></div><div id="reviewDetailHistory" class="review-history-list"></div></section>
+      </div>
+      <div class="modal-footer"><button class="tool-btn" data-close="reviewDetailModal">返回清单</button><button id="reviewDetailStartBtn" class="tool-btn primary">开始本次复习</button></div>
+    </div>
+  </div>
+
+  <div id="eventDetailModal" class="modal hidden" aria-hidden="true">
+    <div class="modal-card event-detail-card">
+      <div class="modal-header"><div><span class="eyebrow">LEARNING DETAIL</span><h3 id="eventDetailTitle">事件详情</h3></div><button class="icon-btn" data-close="eventDetailModal" aria-label="关闭">×</button></div>
+      <div id="eventDetailBody" class="modal-body event-detail-body"></div>
+      <div class="modal-footer"><button id="eventDetailEditBtn" class="tool-btn">编辑事件设置</button><button id="eventDetailStartBtn" class="tool-btn primary">开始学习</button></div>
+    </div>
+  </div>
+
+  <div id="flashcardsModal" class="modal hidden" aria-hidden="true">
+    <div class="modal-card flashcards-card">
+      <div class="modal-header"><div><span class="eyebrow">ACTIVE RECALL</span><h3>闪卡复习</h3></div><button class="icon-btn" data-close="flashcardsModal" aria-label="关闭">×</button></div>
+      <div class="module-toolbar"><select id="flashcardsSubjectFilter"><option value="all">全部学科</option></select><span id="flashcardProgress">0 / 0</span></div>
+      <div class="modal-body flashcard-body"><div class="method-note"><b>复习建议</b><span>先遮住答案主动回忆，再翻面核对；每次可换成复述、例题或错因分析，避免只重复阅读。</span></div><button id="flashcardStage" class="flashcard-stage" type="button"><span id="flashcardSource"></span><strong id="flashcardQuestion">暂无闪卡</strong><p id="flashcardAnswer">保存含知识点的学习事件后，会自动生成闪卡。</p><small>点击卡片翻面</small></button></div>
+      <div class="modal-footer flashcard-controls"><button id="flashcardPrevBtn" class="tool-btn">上一张</button><button id="flashcardSourceBtn" class="tool-btn">查看来源</button><button id="flashcardRevealBtn" class="tool-btn primary">显示答案</button><button id="flashcardNextBtn" class="tool-btn">下一张</button></div>
+    </div>
+  </div>
+
+  <div id="leftoverModal" class="modal hidden" aria-hidden="true">
+    <div class="modal-card module-card">
+      <div class="modal-header"><div><span class="eyebrow">LEFTOVER POOL</span><h3>遗留待清池</h3></div><button class="icon-btn" data-close="leftoverModal" aria-label="关闭">×</button></div>
+      <div class="modal-body"><p class="settings-note">遗留问题始终挂载在原学习事件上；完成后会同步到复习卡片，但仍保留原文作为学习痕迹。</p><div id="leftoverList" class="leftover-list"></div></div>
+    </div>
+  </div>
+
   <div id="focusDetailModal" class="modal hidden" aria-hidden="true">
     <div class="modal-card compact-card">
-      <div class="modal-header"><div><span class="eyebrow">COMPLETE</span><h3>完成本次专注</h3></div><button class="icon-btn" data-close="focusDetailModal" aria-label="关闭">×</button></div>
-      <div class="modal-body"><div id="focusSummary" class="focus-summary"></div><label class="block-label">学习详情<textarea id="focusDetailText" rows="4" maxlength="160" placeholder="记录完成了什么、遇到的问题或下一步计划"></textarea></label></div>
+      <div class="modal-header"><div><span class="eyebrow">COMPLETE</span><h3 id="focusDetailTitle">完成本次专注</h3></div><button class="icon-btn" data-close="focusDetailModal" aria-label="关闭">×</button></div>
+      <div class="modal-body"><div id="focusSummary" class="focus-summary"></div><div class="focus-progress-grid"><label><span id="focusStartLabel">从哪里开始</span><input id="focusStartPoint" type="text" maxlength="100" placeholder="例如：讲义 P69" /></label><label><span id="focusEndLabel">学到哪里</span><input id="focusEndPoint" type="text" maxlength="100" placeholder="例如：讲义 P83" /></label></div><label class="block-label"><span>完成后掌握程度</span><select id="focusResultMastery"><option value="unknown">尚未判断</option><option value="weak">薄弱</option><option value="partial">部分掌握</option><option value="mastered">已掌握</option></select></label><label class="block-label"><span id="focusDetailLabel">学习详情</span><textarea id="focusDetailText" rows="4" maxlength="240" placeholder="记录掌握的知识点、遇到的问题或下一步计划"></textarea></label></div>
       <div class="modal-footer"><button id="discardFocusBtn" class="tool-btn">不保存</button><button id="saveFocusBtn" class="tool-btn primary">完成并加入时间轴</button></div>
     </div>
   </div>
@@ -186,10 +279,12 @@
   <div id="immersionOverlay" class="immersion-overlay hidden">
     <div id="immersionBackdrop" class="immersion-backdrop"></div>
     <button id="exitImmersionBtn" class="immersion-exit" aria-label="退出沉浸界面">□</button>
-    <div class="immersion-content">
+    <div id="immersionContent" class="immersion-content">
       <span id="immersionMode" class="immersion-mode">正计时</span>
       <div id="immersionClock" class="immersion-clock">00:00:00</div>
       <div id="immersionSubject" class="immersion-subject"></div>
+      <section id="immersionReviewCard" class="immersion-review-card hidden"></section>
+      <textarea id="immersionLiveNote" class="immersion-live-note" rows="3" maxlength="1200" placeholder="随手记录关键点、疑问或闪卡素材…"></textarea>
       <div id="immersionCountdown" class="immersion-countdown"></div>
       <blockquote id="immersionQuote" class="immersion-quote"></blockquote>
       <button id="immersionStopBtn" class="immersion-stop">结束本次专注</button>
