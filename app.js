@@ -236,7 +236,8 @@ function createLayout(width,hourHeight,top=0) {
   return {width,hourHeight,top,hours,planWidth,height:top+hours.length*hourHeight};
 }
 function resizeCanvas() {
-  const width=Math.max(430,dom.timelineScroll.clientWidth||800); layout=createLayout(width,state.settings.hourHeight,0);
+  const mobileViewport=window.matchMedia('(max-width: 720px)').matches;
+  const width=Math.max(mobileViewport?320:430,dom.timelineScroll.clientWidth||800); layout=createLayout(width,state.settings.hourHeight,0);
   const dpr=window.devicePixelRatio||1; canvas.width=Math.round(width*dpr); canvas.height=Math.round(layout.height*dpr);
   canvas.style.height=`${layout.height}px`; ctx.setTransform(dpr,0,0,dpr,0,0); return layout;
 }

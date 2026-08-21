@@ -1,4 +1,4 @@
-const CACHE_NAME = 'learning-journal-v8';
+const CACHE_NAME = 'learning-journal-v10';
 const APP_SHELL = ['./', './index.html', './styles.css', './app.js', './manifest.webmanifest', './icon.svg'];
 
 self.addEventListener('install', (event) => {
