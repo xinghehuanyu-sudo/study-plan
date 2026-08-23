@@ -7,7 +7,7 @@
   <title>学习计划时间轴</title>
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=17" />
 </head>
 <body>
   <div class="app-shell">
@@ -37,7 +37,7 @@
     </header>
 
     <div id="layoutEditBar" class="layout-edit-bar hidden">
-      <span>布局编辑中：拖动高亮边框调整区域，时间轴中线可调整计划/记录比例</span>
+      <span>布局编辑中：拖动高亮边框调整左右栏、日期/专注/复习高度；时间轴中线可调整计划/记录比例</span>
       <button id="finishLayoutBtn" class="tool-btn primary">完成</button>
       <button id="resetLayoutBtn" class="tool-btn">恢复默认</button>
     </div>
@@ -59,6 +59,8 @@
           </button>
           <button id="nextDayBtn" class="nav-arrow" aria-label="后一天">→</button>
         </section>
+
+        <div id="dateFocusHandle" class="layout-resize-handle horizontal" aria-hidden="true"></div>
 
         <section class="focus-card">
           <div class="section-heading"><div><span class="eyebrow">FOCUS</span><h2>专注计时</h2></div><span id="focusStatus" class="status-pill">未开始</span></div>
@@ -194,7 +196,14 @@
   <div id="statsModal" class="modal hidden" aria-hidden="true">
     <div class="modal-card module-card">
       <div class="modal-header"><div><span class="eyebrow">INSIGHTS</span><h3>专注统计</h3></div><button class="icon-btn" data-close="statsModal" aria-label="关闭">×</button></div>
-      <div class="module-toolbar"><div id="statsSubjectFilters" class="subject-filter-list"></div><select id="statsRange"><option value="day">本日</option><option value="week">本周</option><option value="month" selected>本月</option><option value="year">本年</option></select></div>
+      <div class="module-toolbar stats-toolbar">
+        <div id="statsSubjectFilters" class="subject-filter-list"></div>
+        <div class="stats-controls">
+          <label>统计范围<select id="statsRange"><option value="day">本日</option><option value="week">本周</option><option value="month" selected>本月</option><option value="year">本年</option><option value="custom">自定义</option></select></label>
+          <div id="statsCustomRange" class="stats-custom-range hidden"><input id="statsCustomFrom" type="date" aria-label="统计开始日期" /><span>至</span><input id="statsCustomTo" type="date" aria-label="统计结束日期" /></div>
+          <label>分布图<select id="statsChartType"><option value="bar">柱状图</option><option value="pie">扇形图</option></select></label>
+        </div>
+      </div>
       <div class="modal-body stats-grid">
         <section class="stat-card" data-stat-section="summary"><button class="eye-btn" data-toggle-stat="summary" title="显示或隐藏">◉</button><h4>累计专注</h4><div class="metric-row"><div><strong id="statTotalCount">0</strong><span>次数</span></div><div><strong id="statTotalTime">0m</strong><span>总时长</span></div><div><strong id="statDailyAverage">0m</strong><span>日均</span></div></div></section>
         <section class="stat-card" data-stat-section="today"><button class="eye-btn" data-toggle-stat="today">◉</button><h4>今日专注</h4><div class="metric-row"><div><strong id="statTodayCount">0</strong><span>次数</span></div><div><strong id="statTodayTime">0m</strong><span>时长</span></div></div></section>
@@ -293,6 +302,6 @@
 
   <div id="contextMenu" class="context-menu hidden"></div>
   <input id="importInput" type="file" accept="application/json" hidden />
-  <script src="app.js"></script>
+  <script src="app.js?v=17"></script>
 </body>
 </html>

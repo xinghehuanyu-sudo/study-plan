@@ -35,7 +35,7 @@ const defaultSettings = {
   planRatio: .5, defaultSelectionZone: 'record', showDots: true, dotSize: 1.7, dotOpacity: .2,
   eventPlacement: 'bottom', dividerDrag: true, defaultPlanColor: '#d09a55', defaultRecordColor: '#4f8aa8',
   defaultEventOpacity: .86, defaultTextSize: 13, defaultTextColor: '#20231f', defaultTextOpacity: .92,
-  shortcut: 'Ctrl+Enter', sideWidth: 330, focusHeight: 285,
+  shortcut: 'Ctrl+Enter', sideWidth: 330, dateHeight: 62, focusHeight: 285,
   immersionTheme: 'plain', immersionOpacity: .72, showCountdown: false, countdownName: '距离考试',
   countdownDate: '', showQuote: true
   , arrowWidth: 1.75, arrowSize: 6, compactToolbar: false,
@@ -59,7 +59,7 @@ const dom = {};
 [
   'mainLayout','timelineScroll','timelineCanvas','currentDateLabel','reviewBadge','currentDateButton','reviewList','reviewListSummary',
   'toolbarMenuBtn','toolbarMenu','layoutEditBar','addEventBtn','editLayoutBtn','finishLayoutBtn','resetLayoutBtn',
-  'sideResizeHandle','focusReviewHandle','contextMenu','importInput','eventModal','settingsModal','calendarModal',
+  'sideResizeHandle','dateFocusHandle','focusReviewHandle','contextMenu','importInput','eventModal','settingsModal','calendarModal',
   'statsModal','subjectsModal','planReminderModal','reviewDetailModal','focusDetailModal','eventDetailModal','flashcardsModal','leftoverModal','planReminderSubject','planReminderTime',
   'planReminderTitle','planReminderActions','planReminderLocation','planReminderIgnoreBtn','planReminderSnoozeBtn','planReminderStartBtn',
   'reviewDetailTitle','reviewDetailBasic','reviewDetailLearning',
@@ -71,7 +71,7 @@ const dom = {};
   'settingEventPlacement','settingDotSize','settingDotOpacity','settingArrowWidth','settingArrowSize','settingCompactToolbar','settingShowDots','settingDividerDrag',
   'settingHiddenHours','settingReviewPreset','settingReviewIntervals','settingReviewColor','settingReviewOpacity',
   'settingShortcut','settingCountdownName','settingCountdownDate','settingImmersionTheme','settingImmersionOpacity','settingCountdownSize','settingCountdownPosition','settingImmersionBackground','settingLocalBackground','localBackgroundStatus',
-  'settingShowCountdown','settingShowQuote','settingSoundType','settingSoundDuration','settingSoundVolume','settingSoundEnabled','settingNotificationsEnabled','monthCalendar','calendarTitle','statsSubjectFilters','statsRange',
+  'settingShowCountdown','settingShowQuote','settingSoundType','settingSoundDuration','settingSoundVolume','settingSoundEnabled','settingNotificationsEnabled','monthCalendar','calendarTitle','statsSubjectFilters','statsRange','statsCustomRange','statsCustomFrom','statsCustomTo','statsChartType',
   'statTotalCount','statTotalTime','statDailyAverage','statTodayCount','statTodayTime','distributionChart',
   'monthlyChart','yearlyChart','subjectsList','subjectDetail','focusSubjects','focusTaskType','focusTimerType','focusDurationWrap',
   'focusDuration','focusCustomDurationWrap','focusCustomDuration','focusClock','focusSubjectLabel','focusLiveNote','focusStatus',
@@ -98,6 +98,7 @@ function bindEvents() {
     event.stopPropagation();
     const open = dom.toolbarMenu.classList.toggle('hidden') === false;
     dom.toolbarMenuBtn.setAttribute('aria-expanded', String(open));
+    document.body.classList.toggle('toolbar-menu-open', open);
   });
   document.addEventListener('click', (event) => {
     if (!dom.toolbarMenu.contains(event.target) && event.target !== dom.toolbarMenuBtn) closeToolbarMenu();
@@ -157,7 +158,10 @@ function bindEvents() {
   document.querySelectorAll('[data-close]').forEach((button) => button.addEventListener('click', () => closeModal(button.dataset.close)));
   document.querySelectorAll('.filter-btn').forEach((button) => button.addEventListener('click', () => setReviewFilter(button.dataset.filter)));
   document.querySelectorAll('[data-toggle-stat]').forEach((button) => button.addEventListener('click', () => toggleStat(button.dataset.toggleStat)));
-  dom.statsRange.addEventListener('change', renderStats);
+  dom.statsRange.addEventListener('change', () => { updateStatsRangeUI();renderStats(); });
+  dom.statsCustomFrom.addEventListener('change', renderStats);
+  dom.statsCustomTo.addEventListener('change', renderStats);
+  dom.statsChartType.addEventListener('change', renderStats);
 
   dom.eventCategory.addEventListener('change', () => { syncSubcategoryOptions(); syncEventAppearance(); });
   dom.eventSubcategory.addEventListener('change', () => { syncTopicOptions(); syncEventAppearance(); });
@@ -186,6 +190,7 @@ function bindEvents() {
   canvas.addEventListener('contextmenu', onCanvasContextMenu);
   canvas.addEventListener('pointerdown', onCanvasPointerDown);
   dom.sideResizeHandle.addEventListener('pointerdown', (event) => beginLayoutResize(event, 'side'));
+  dom.dateFocusHandle.addEventListener('pointerdown', (event) => beginLayoutResize(event, 'date'));
   dom.focusReviewHandle.addEventListener('pointerdown', (event) => beginLayoutResize(event, 'focus'));
   window.addEventListener('resize', renderTimeline);
   window.addEventListener('keydown', onKeydown);
@@ -304,11 +309,12 @@ function drawEvent(context,targetLayout,event,exportMode) {
   const planStatus=event.halfZone==='plan'?(event.planCompletedAt?'✓ ':event.planStartedAt?'▶ ':''):'';
   const first=segments[0],label=`${planStatus}${event.important?'★ ':''}${subjectName?subjectName+' · ':''}${point}${actions?' · '+actions:''}`;
   const zoneLeft=event.halfZone==='record'?targetLayout.planWidth:0,zoneRight=event.halfZone==='record'?targetLayout.width:targetLayout.planWidth;
-  context.font=`${subject?.italic?'italic ':''}${subject?.bold?'700 ':'400 '}${clamp(subject?.textSize||event.textSize||12,10,15)}px "Segoe UI","Microsoft YaHei"`;
-  const fitted=fitText(context,label,Math.max(70,zoneRight-zoneLeft-42)),w=context.measureText(fitted).width+10;
-  const x=clamp((first.x1+first.x2)/2-w/2,zoneLeft+7,zoneRight-w-7),y=first.y-23;
-  context.fillStyle='rgba(255,255,255,.94)';roundRect(context,x,y,w,18,6);context.fill();
-  context.fillStyle=event.textColor||'#20231f';context.globalAlpha=subject?.textOpacity??event.textOpacity??.92;context.textAlign='center';context.textBaseline='middle';context.fillText(fitted,x+w/2,y+9);
+  const fontSize=clamp(subject?.textSize||event.textSize||12,10,24),labelHeight=Math.max(18,fontSize+6);
+  context.font=`${subject?.italic?'italic ':''}${subject?.bold?'700 ':'400 '}${fontSize}px "Segoe UI","Microsoft YaHei"`;
+  const fitted=fitText(context,label,Math.max(70,zoneRight-zoneLeft-42)),w=context.measureText(fitted).width+12;
+  const x=clamp((first.x1+first.x2)/2-w/2,zoneLeft+7,zoneRight-w-7),y=first.y-labelHeight-5;
+  context.fillStyle='rgba(255,255,255,.94)';roundRect(context,x,y,w,labelHeight,6);context.fill();
+  context.fillStyle=event.textColor||'#20231f';context.globalAlpha=subject?.textOpacity??event.textOpacity??.92;context.textAlign='center';context.textBaseline='middle';context.fillText(fitted,x+w/2,y+labelHeight/2);
   context.restore();
 }
 function fitText(context,text,max){if(context.measureText(text).width<=max)return text;let value=text;while(value.length>2&&context.measureText(value+'…').width>max)value=value.slice(0,-1);return value+'…';}
@@ -376,17 +382,17 @@ function toggleLayoutEditing(){setLayoutEditing(!state.layoutEditing);}
 function setLayoutEditing(value){state.layoutEditing=value;document.body.classList.toggle('layout-editing',value);dom.layoutEditBar.classList.toggle('hidden',!value);setToolLabel(dom.editLayoutBtn,value?'完成':'布局',value?'✓':'⤢');dom.editLayoutBtn.title=value?'完成布局':'编辑布局';renderTimeline();}
 function beginLayoutResize(event,type) {
   if(!state.layoutEditing)return;event.preventDefault();const handle=event.currentTarget;handle.classList.add('dragging');
-  const move=(e)=>{if(type==='side'){const rect=dom.mainLayout.getBoundingClientRect();state.settings.sideWidth=clamp(rect.right-e.clientX,260,560);}else{const rect=document.querySelector('.side-panel').getBoundingClientRect();state.settings.focusHeight=clamp(e.clientY-rect.top-70,180,500);}applyLayoutSettings();renderTimeline();};
+  const move=(e)=>{const rect=document.querySelector('.side-panel').getBoundingClientRect();if(type==='side'){const mainRect=dom.mainLayout.getBoundingClientRect();state.settings.sideWidth=clamp(mainRect.right-e.clientX,260,560);}else if(type==='date'){state.settings.dateHeight=clamp(e.clientY-rect.top,54,120);}else{state.settings.focusHeight=clamp(e.clientY-rect.top-(state.settings.dateHeight||62)-16,180,500);}applyLayoutSettings();renderTimeline();};
   const up=()=>{handle.classList.remove('dragging');saveBackup();window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);};
   window.addEventListener('pointermove',move);window.addEventListener('pointerup',up);
 }
-function applyLayoutSettings(){document.documentElement.style.setProperty('--side-width',`${state.settings.sideWidth}px`);document.documentElement.style.setProperty('--focus-height',`${state.settings.focusHeight}px`);document.body.classList.toggle('compact-toolbar',Boolean(state.settings.compactToolbar));}
-function resetLayout(){state.settings.sideWidth=330;state.settings.focusHeight=285;state.settings.planRatio=.5;applyLayoutSettings();syncSettingsToUI();saveBackup();renderTimeline();}
+function applyLayoutSettings(){document.documentElement.style.setProperty('--side-width',`${state.settings.sideWidth}px`);document.documentElement.style.setProperty('--date-height',`${state.settings.dateHeight||62}px`);document.documentElement.style.setProperty('--focus-height',`${state.settings.focusHeight}px`);document.body.classList.toggle('compact-toolbar',Boolean(state.settings.compactToolbar));}
+function resetLayout(){state.settings.sideWidth=330;state.settings.dateHeight=62;state.settings.focusHeight=285;state.settings.planRatio=.5;applyLayoutSettings();syncSettingsToUI();saveBackup();renderTimeline();}
 
 function openModal(id){const el=document.getElementById(id);el.classList.remove('hidden');el.setAttribute('aria-hidden','false');}
 function closeModal(id){const el=document.getElementById(id);if(!el)return;el.classList.add('hidden');el.setAttribute('aria-hidden','true');}
 function closeAllModals(){document.querySelectorAll('.modal').forEach((el)=>{el.classList.add('hidden');el.setAttribute('aria-hidden','true');});}
-function closeToolbarMenu(){dom.toolbarMenu.classList.add('hidden');dom.toolbarMenuBtn.setAttribute('aria-expanded','false');}
+function closeToolbarMenu(){dom.toolbarMenu.classList.add('hidden');dom.toolbarMenuBtn.setAttribute('aria-expanded','false');document.body.classList.remove('toolbar-menu-open');}
 
 function syncCategoryOptions(selectedId) {
   dom.eventCategory.innerHTML=state.categories.map((s)=>`<option value="${s.id}">${escapeHtml(s.name)}</option>`).join('');
@@ -565,7 +571,7 @@ function renderCalendar() {
   dom.calendarTitle.textContent=`${year} 年 ${m+1} 月`;const cells=['一','二','三','四','五','六','日'].map((d)=>`<div class="calendar-weekday">周${d}</div>`);
   for(let i=0;i<42;i+=1){const day=i-firstWeekday+1,date=new Date(year,m,day),key=dateKey(date),outside=date.getMonth()!==m;
     const records=state.events.filter((e)=>e.date===key&&e.halfZone==='record'),minutes=records.reduce((sum,e)=>sum+e.endSlot-e.startSlot,0),reviews=state.reviews.filter((r)=>r.reviewDate===key&&!r.completed&&!r.abandoned).length;
-    cells.push(`<button class="calendar-day ${outside?'outside':''} ${key===dateKey(new Date())?'today':''}" data-calendar-date="${key}"><span class="calendar-day-number">${date.getDate()}</span><div class="calendar-day-summary">${minutes?durationLabel(minutes*60):''}${reviews?` · ${reviews}待复习`:''}</div>${records.slice(0,3).map((e)=>`<div class="calendar-event" style="--calendar-event-color:${subjectById(e.categoryId)?.color||e.color||'#aeb5ae'}">${escapeHtml(e.knowledgePoint||e.textContent||e.categoryName)}</div>`).join('')}</button>`);
+    cells.push(`<button class="calendar-day ${outside?'outside':''} ${key===dateKey(new Date())?'today':''}" data-calendar-date="${key}"><span class="calendar-day-number">${date.getDate()}</span><div class="calendar-day-summary">${minutes?durationLabel(minutes*60):''}${reviews?` · ${reviews}待复习`:''}</div><div class="calendar-day-events">${records.map((e)=>{const name=e.knowledgePoint||e.textContent||e.categoryName,duration=durationLabel(Math.max(1,e.endSlot-e.startSlot)*60);return`<div class="calendar-event" title="${escapeHtml(name)} · ${duration}" style="--calendar-event-color:${subjectById(e.categoryId)?.color||e.color||'#aeb5ae'}"><span class="calendar-event-label">${escapeHtml(name)}</span><span class="calendar-event-duration">${duration}</span></div>`;}).join('')}</div></button>`);
   }dom.monthCalendar.innerHTML=cells.join('');dom.monthCalendar.querySelectorAll('[data-calendar-date]').forEach((b)=>b.onclick=()=>{state.currentDate=startOfDay(parseDate(b.dataset.calendarDate));closeModal('calendarModal');saveBackup();renderAll();});
 }
 
@@ -612,8 +618,9 @@ function clearEvents(){if(!state.events.length||!window.confirm('确认清空全
 function focusEvents(){return state.events.filter((e)=>e.taskType==='focus'||Number.isFinite(e.focusSeconds));}
 function focusSeconds(event){return Number(event.focusSeconds)||Math.max(60,(event.endSlot-event.startSlot)*60);}
 function openStats() {
-  state.statsSubjects=new Set(flattenSubjectOptions().map((s)=>s.id));renderStatsFilters();openModal('statsModal');renderStats();
+  state.statsSubjects=new Set(flattenSubjectOptions().map((s)=>s.id));const today=new Date(),monthStart=new Date(today.getFullYear(),today.getMonth(),1);if(!dom.statsCustomFrom.value)dom.statsCustomFrom.value=dateKey(monthStart);if(!dom.statsCustomTo.value)dom.statsCustomTo.value=dateKey(today);renderStatsFilters();updateStatsRangeUI();openModal('statsModal');renderStats();
 }
+function updateStatsRangeUI(){dom.statsCustomRange.classList.toggle('hidden',dom.statsRange.value!=='custom');}
 function flattenSubjectOptions() {
   const result=[];state.categories.forEach((root)=>{result.push({id:root.id,name:root.name,color:root.color,depth:0});(root.children||[]).forEach((second)=>{result.push({id:second.id,name:`${root.name} / ${second.name}`,color:root.color,depth:1});(second.children||[]).forEach((third)=>result.push({id:third.id,name:`${root.name} / ${second.name} / ${third.name}`,color:root.color,depth:2}));});});return result;
 }
@@ -634,7 +641,8 @@ function filterStatsRange(events,range) {
   if(range==='day')return events.filter((e)=>e.date===dateKey(today));
   if(range==='week'){const monday=addDays(today,-((today.getDay()+6)%7));return events.filter((e)=>{const d=parseDate(e.date);return d>=monday&&d<addDays(monday,7);});}
   if(range==='month')return events.filter((e)=>{const d=parseDate(e.date);return d.getFullYear()===today.getFullYear()&&d.getMonth()===today.getMonth();});
-  return events.filter((e)=>parseDate(e.date).getFullYear()===today.getFullYear());
+  if(range==='year')return events.filter((e)=>parseDate(e.date).getFullYear()===today.getFullYear());
+  const from=dom.statsCustomFrom.value,to=dom.statsCustomTo.value;return events.filter((e)=>(!from||e.date>=from)&&(!to||e.date<=to));
 }
 function toggleStat(key){state.statVisibility[key]=!state.statVisibility[key];renderStats();}
 function prepareChart(canvasEl) {
@@ -643,9 +651,10 @@ function prepareChart(canvasEl) {
 }
 function drawDistributionChart(events) {
   const {c,width,height}=prepareChart(dom.distributionChart),totals=state.categories.map((s)=>({s,value:events.filter((e)=>e.categoryId===s.id).reduce((sum,e)=>sum+focusSeconds(e),0)})).filter((x)=>x.value>0);
-  if(!totals.length){drawEmptyChart(c,width,height);return;}const max=Math.max(...totals.map((x)=>x.value));c.font='11px "Segoe UI"';
-  totals.forEach((item,i)=>{const y=28+i*Math.min(36,(height-40)/totals.length),barWidth=(width-150)*item.value/max;c.fillStyle='#737a73';c.fillText(item.s.name,12,y+7);c.fillStyle=rgba(item.s.color,.82);roundRect(c,86,y-5,barWidth,17,6);c.fill();c.fillStyle='#555';c.fillText(durationLabel(item.value),94+barWidth,y+7);});
+  if(!totals.length){drawEmptyChart(c,width,height);return;}if(dom.statsChartType.value==='pie'){drawDistributionPie(c,width,height,totals);return;}const max=Math.max(...totals.map((x)=>x.value));c.font='11px "Segoe UI"';
+  totals.forEach((item,i)=>{const y=28+i*Math.min(36,(height-40)/totals.length),barWidth=Math.max(2,(width-170)*item.value/max);c.fillStyle='#737a73';c.fillText(item.s.name,12,y+7);c.fillStyle=rgba(item.s.color,.82);roundRect(c,86,y-5,barWidth,17,6);c.fill();c.fillStyle='#555';c.fillText(durationLabel(item.value),94+barWidth,y+7);});
 }
+function drawDistributionPie(c,width,height,totals){const sum=totals.reduce((value,item)=>value+item.value,0),radius=Math.min(82,height*.36,width*.18),cx=Math.max(radius+22,width*.3),cy=height/2;let angle=-Math.PI/2;totals.forEach((item)=>{const next=angle+item.value/sum*Math.PI*2;c.fillStyle=rgba(item.s.color,.88);c.beginPath();c.moveTo(cx,cy);c.arc(cx,cy,radius,angle,next);c.closePath();c.fill();angle=next;});c.fillStyle='#fff';c.beginPath();c.arc(cx,cy,radius*.48,0,Math.PI*2);c.fill();c.fillStyle='#2d332e';c.textAlign='center';c.font='700 14px "Segoe UI"';c.fillText(durationLabel(sum),cx,cy+5);c.textAlign='left';c.font='11px "Segoe UI"';totals.forEach((item,index)=>{const x=Math.min(width-145,cx+radius+28),y=32+index*28;c.fillStyle=item.s.color;c.beginPath();c.arc(x,y-4,5,0,Math.PI*2);c.fill();c.fillStyle='#555';c.fillText(`${item.s.name} ${Math.round(item.value/sum*100)}% · ${durationLabel(item.value)}`,x+12,y);});}
 function drawMonthlyChart(events) {
   const now=new Date(),days=new Date(now.getFullYear(),now.getMonth()+1,0).getDate(),values=Array.from({length:days},(_,i)=>events.filter((e)=>e.date===dateKey(new Date(now.getFullYear(),now.getMonth(),i+1))).reduce((s,e)=>s+focusSeconds(e)/60,0));
   drawLineChart(dom.monthlyChart,values,values.map((_,i)=>String(i+1)),5);
@@ -679,7 +688,7 @@ function renderSubjectDetail() {
   const durations=new Map();focus.forEach((e)=>durations.set(e.date,(durations.get(e.date)||0)+focusSeconds(e)));const streak=calculateStreak([...durations.keys()]),maxStreak=calculateMaxStreak([...durations.keys()]);
   const mini=Array.from({length:monthDays},(_,i)=>{const key=dateKey(new Date(today.getFullYear(),today.getMonth(),i+1)),seconds=durations.get(key)||0,alpha=seconds?clamp(.2+seconds/7200,.25,1):0;return`<div class="mini-day-cell"><div class="mini-day" style="${seconds?`border-color:${s.color};background:${rgba(s.color,alpha)};color:#fff`:''}">${i+1}</div><small>${seconds?durationLabel(seconds):'　'}</small></div>`;}).join('');
   const hierarchy=(s.children||[]).map((l2)=>`<div class="hierarchy-row" data-level2="${l2.id}"><input class="level2-name" value="${escapeHtml(l2.name)}"><button class="tool-btn" data-add-level3="${l2.id}">+ 三级</button><label><input class="level2-review" type="checkbox" ${l2.reviewEnabled!==false?'checked':''}>复习</label><button class="tool-btn" data-delete-level2="${l2.id}">删</button></div>${(l2.children||[]).map((l3)=>`<div class="hierarchy-row level3" data-level2="${l2.id}" data-level3="${l3.id}"><span>↳</span><input class="level3-name" value="${escapeHtml(l3.name)}"><label><input class="level3-review" type="checkbox" ${l3.reviewEnabled!==false?'checked':''}>复习</label><button class="tool-btn" data-delete-level3="${l3.id}">删</button></div>`).join('')}`).join('');
-  const heat=buildYearHeatmap(s,focus),records=events.sort((a,b)=>b.date.localeCompare(a.date)).slice(0,80).map((e)=>`<button class="subject-record" data-subject-event="${e.id}"><strong>${e.date} · ${slotLabel(e.startSlot)}–${slotLabel(e.endSlot)}</strong><br>${escapeHtml(e.knowledgePoint||e.textContent||e.categoryName)}</button>`).join('')||'<div class="review-empty">暂无记录</div>';
+  const heat=buildYearHeatmap(s,focus),records=events.sort((a,b)=>b.date.localeCompare(a.date)).map((e)=>`<button class="subject-record" data-subject-event="${e.id}"><strong>${e.date} · ${slotLabel(e.startSlot)}–${slotLabel(e.endSlot)}</strong><br>${escapeHtml(e.knowledgePoint||e.textContent||e.categoryName)}</button>`).join('')||'<div class="review-empty">暂无记录</div>';
   dom.subjectDetail.innerHTML=`<div class="subject-detail-grid">
     <section class="subject-section wide"><div class="section-heading"><h4>基本设置</h4><button id="deleteSubjectBtn" class="tool-btn danger">删除学科</button></div><div class="subject-style-grid">
       <label>名称<input id="subjectNameInput" value="${escapeHtml(s.name)}"></label><label>颜色<input id="subjectColorInput" type="color" value="${s.color}"></label><label>文字大小<input id="subjectTextSize" type="number" min="10" max="24" value="${s.textSize}"></label>
@@ -789,4 +798,4 @@ function renderAll(){renderDate();renderTimeline();renderReviews();renderFocusSu
 updateFocusDurationUI();
 checkPlanReminders();
 state.planReminderTicker=setInterval(checkPlanReminders,15000);
-if('serviceWorker'in navigator&&/^https?:$/.test(location.protocol))navigator.serviceWorker.register('./sw.js').catch(()=>{});
+if('serviceWorker'in navigator&&/^https?:$/.test(location.protocol))navigator.serviceWorker.register('./sw.js?v=17').catch(()=>{});
