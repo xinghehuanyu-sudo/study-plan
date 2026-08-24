@@ -1,5 +1,5 @@
-const CACHE_NAME = 'learning-journal-v17';
-const APP_SHELL = ['./', './index.html', './styles.css?v=17', './app.js?v=17', './manifest.webmanifest', './icon.svg'];
+const CACHE_NAME = 'learning-journal-v20';
+const APP_SHELL = ['./', './index.html', './styles.css?v=20', './app.js?v=20', './manifest.webmanifest', './icon.svg'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)));
@@ -18,4 +18,13 @@ self.addEventListener('fetch', (event) => {
     caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
     return response;
   }).catch(() => caches.match(event.request).then((cached) => cached || caches.match('./index.html'))));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windows) => {
+    const existing = windows[0];
+    if (existing) return existing.focus();
+    return clients.openWindow('./index.html');
+  }));
 });
