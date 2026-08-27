@@ -1,7 +1,7 @@
 {
   "name": "学习日志时间轴",
   "short_name": "学习日志",
-  "description": "结构化学习记录、复习排期、闪卡与专注计时工具",
+  "description": "结构化学习记录、复习排期与可暂停接续的专注计时工具",
   "lang": "zh-CN",
   "start_url": "./index.html",
   "scope": "./",

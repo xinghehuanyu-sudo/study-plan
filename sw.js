@@ -1,5 +1,5 @@
-const CACHE_NAME = 'learning-journal-v20';
-const APP_SHELL = ['./', './index.html', './styles.css?v=20', './app.js?v=20', './manifest.webmanifest', './icon.svg'];
+const CACHE_NAME = 'learning-journal-v22';
+const APP_SHELL = ['./', './index.html', './styles.css?v=22', './app.js?v=22', './manifest.webmanifest', './icon.svg'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)));
