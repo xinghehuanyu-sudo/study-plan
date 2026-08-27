@@ -7,7 +7,7 @@
   <title>学习计划时间轴</title>
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="styles.css?v=22" />
+  <link rel="stylesheet" href="styles.css?v=25" />
 </head>
 <body>
   <div class="app-shell">
@@ -216,6 +216,14 @@
     </div>
   </div>
 
+  <div id="reportModal" class="modal hidden" aria-hidden="true">
+    <div class="modal-card module-card">
+      <div class="modal-header"><h3>学习日报预览</h3><button class="icon-btn" data-close="reportModal" aria-label="关闭">×</button></div>
+      <div class="modal-body"><p class="settings-note">核对图片后点击保存；若浏览器未自动下载，也可右键或长按图片保存。</p><img id="dailyReportPreview" class="daily-report-preview" alt="当天学习日报，包含总时长、学科分布及时间轴" /></div>
+      <div class="modal-footer"><button class="tool-btn" data-close="reportModal">关闭预览</button><a id="dailyReportDownload" class="tool-btn primary" download>保存 PNG</a></div>
+    </div>
+  </div>
+
   <div id="subjectsModal" class="modal hidden" aria-hidden="true">
     <div class="modal-card module-card">
       <div class="modal-header"><div><span class="eyebrow">SUBJECTS</span><h3>学科管理</h3></div><button class="icon-btn" data-close="subjectsModal" aria-label="关闭">×</button></div>
@@ -314,8 +322,20 @@
     </div>
   </div>
 
+  <div id="inputDialogModal" class="modal input-dialog-modal hidden" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="inputDialogTitle">
+    <form id="inputDialogForm" class="modal-card compact-card" novalidate>
+      <div class="modal-header"><h3 id="inputDialogTitle">填写信息</h3><button type="button" class="icon-btn" data-close="inputDialogModal" aria-label="关闭">×</button></div>
+      <div class="modal-body">
+        <p id="inputDialogDescription" class="settings-note"></p>
+        <label class="block-label"><span id="inputDialogLabel">名称</span><input id="inputDialogValue" type="text" maxlength="100" required aria-describedby="inputDialogError" /></label>
+        <label id="inputDialogEarlierWrap" class="check-row hidden"><input id="inputDialogEarlier" type="checkbox" /> 允许将安排提前</label>
+        <p id="inputDialogError" class="form-error" role="alert"></p>
+      </div>
+      <div class="modal-footer"><button type="button" class="tool-btn" data-close="inputDialogModal">取消</button><button type="submit" class="tool-btn primary">确认保存</button></div>
+    </form>
+  </div>
   <div id="contextMenu" class="context-menu hidden"></div>
   <input id="importInput" type="file" accept="application/json" hidden />
-  <script src="app.js?v=22"></script>
+  <script src="app.js?v=25"></script>
 </body>
 </html>

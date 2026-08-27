@@ -51,6 +51,7 @@ const state = {
   currentDate: startOfDay(new Date()), settings: clone(defaultSettings), categories: clone(defaultCategories),
   events: [], reviews: [], focusTasks: [], reviewFilter: 'today', history: [], future: [],
   editingEventId: null, editingEventTime: null, selection: null, selectedEventId: null, selectedReviewId: null, hoveredEventId: null,
+  inputDialog: null, modalStack: [], modalReturnFocus: new Map(),
   layoutEditing: false, dividerDragging: false, focus: null, pendingFocus: null, focusTicker: null,
   pendingPlanReminderId: null, planReminderTicker: null, reviewDayKey: null,
   calendarMonth: startOfMonth(new Date()), selectedSubjectId: null, statsSubjects: new Set(),
@@ -82,7 +83,8 @@ const dom = {};
   'stopFocusBtn','pauseFocusBtn','unfinishedTaskPanel','unfinishedTaskList','focusResultName','focusResultSummary','focusResultLeftover','focusCompletionStatus','enterImmersionBtn','focusDetailTitle','focusSummary','focusStartLabel','focusEndLabel','focusDetailLabel',
   'focusStartPoint','focusEndPoint','focusResultMastery','focusDetailText','immersionOverlay','immersionBackdrop','immersionContent',
   'immersionMode','immersionClock','immersionSubject','immersionReviewCard','immersionInputCard','immersionLiveNote','immersionMaterialLocation','immersionEventName','immersionSummary','immersionLeftover','immersionActionType','immersionMastery','immersionCountdown','immersionQuote','immersionPipBtn',
-  'eventDetailTitle','eventDetailBody','eventDetailEditBtn','eventDetailStartBtn','leftoverList','installAppBtn','reloadConfigBtn','reloadConfigFeedback','compactTimelinePresetBtn'
+  'eventDetailTitle','eventDetailBody','eventDetailEditBtn','eventDetailStartBtn','leftoverList','installAppBtn','reloadConfigBtn','reloadConfigFeedback','compactTimelinePresetBtn',
+  'inputDialogModal','inputDialogForm','inputDialogTitle','inputDialogLabel','inputDialogDescription','inputDialogValue','inputDialogEarlierWrap','inputDialogEarlier','inputDialogError','dailyReportPreview','dailyReportDownload'
 ].forEach((id) => { dom[id] = document.getElementById(id); });
 
 const canvas = dom.timelineCanvas;
@@ -139,6 +141,7 @@ function bindEvents() {
   document.getElementById('calendarNextBtn').addEventListener('click', () => { state.calendarMonth = addMonths(state.calendarMonth, 1); renderCalendar(); });
   document.getElementById('saveEventBtn').addEventListener('click', saveEvent);
   document.getElementById('addCategoryBtn').addEventListener('click', addCategory);
+  dom.inputDialogForm.addEventListener('submit', submitInputDialog);
   document.getElementById('saveFocusBtn').addEventListener('click', saveFocusRecord);
   document.getElementById('discardFocusBtn').addEventListener('click', discardFocusRecord);
   dom.planReminderStartBtn.addEventListener('click', () => startPlanEvent(state.pendingPlanReminderId));
@@ -442,9 +445,25 @@ function applyLayoutSettings(){document.documentElement.style.setProperty('--sid
 function toggleFocusCollapsed(){state.settings.focusCollapsed=!state.settings.focusCollapsed;applyLayoutSettings();saveBackup();renderTimeline();}
 function resetLayout(){state.settings.sideWidth=330;state.settings.dateHeight=62;state.settings.focusHeight=285;state.settings.planRatio=.5;state.settings.focusCollapsed=false;applyLayoutSettings();syncSettingsToUI();saveBackup();renderTimeline();}
 
-function openModal(id){const el=document.getElementById(id);el.classList.remove('hidden');el.setAttribute('aria-hidden','false');}
-function closeModal(id){if(id==='focusDetailModal'){state.pendingFocus=null;renderUnfinishedTasks();}const el=document.getElementById(id);if(!el)return;el.classList.add('hidden');el.setAttribute('aria-hidden','true');}
-function closeAllModals(){state.pendingFocus=null;document.querySelectorAll('.modal').forEach((el)=>{el.classList.add('hidden');el.setAttribute('aria-hidden','true');});renderUnfinishedTasks();}
+function overlayFocusables(el){return [...el.querySelectorAll('button, input:not([type="hidden"]), select, textarea, summary, a[href], [tabindex]')].filter(node=>!node.disabled&&node.tabIndex>=0&&node.getClientRects().length);}
+function openModal(id){const el=document.getElementById(id);if(!el)return;state.modalReturnFocus.set(id,document.activeElement);state.modalStack=state.modalStack.filter(item=>item!==id);state.modalStack.push(id);el.classList.remove('hidden');el.setAttribute('aria-hidden','false');el.setAttribute('role','dialog');el.setAttribute('aria-modal','true');overlayFocusables(el)[0]?.focus();}
+function closeModal(id){if(id==='focusDetailModal'){state.pendingFocus=null;renderUnfinishedTasks();}if(id==='inputDialogModal')state.inputDialog=null;const el=document.getElementById(id);if(!el)return;const wasTop=state.modalStack.at(-1)===id;state.modalStack=state.modalStack.filter(item=>item!==id);el.classList.add('hidden');el.setAttribute('aria-hidden','true');const previous=state.modalReturnFocus.get(id);state.modalReturnFocus.delete(id);if(wasTop&&previous?.isConnected&&previous.getClientRects().length)previous.focus();}
+function closeAllModals(){[...state.modalStack].reverse().forEach(closeModal);state.pendingFocus=null;state.inputDialog=null;document.querySelectorAll('.modal').forEach((el)=>{el.classList.add('hidden');el.setAttribute('aria-hidden','true');});renderUnfinishedTasks();}
+function openInputDialog({title,label,value='',type='text',description='',allowEarlier=false,onSubmit}){
+  state.inputDialog={onSubmit};dom.inputDialogTitle.textContent=title;dom.inputDialogLabel.textContent=label;dom.inputDialogDescription.textContent=description;
+  dom.inputDialogValue.type=type;dom.inputDialogValue.value=value;dom.inputDialogError.textContent='';dom.inputDialogEarlier.checked=false;dom.inputDialogEarlierWrap.classList.toggle('hidden',!allowEarlier);
+  openModal('inputDialogModal');dom.inputDialogValue.focus();
+}
+function submitInputDialog(event){
+  event.preventDefault();const dialog=state.inputDialog;if(!dialog)return;const value=dom.inputDialogValue.value.trim();
+  const error=value?dialog.onSubmit(value):'请填写有效内容。';if(error){dom.inputDialogError.textContent=error;dom.inputDialogValue.focus();return;}closeModal('inputDialogModal');
+}
+function trapOverlayTab(event){
+  if(event.key!=='Tab')return false;
+  const overlay=state.modalStack.length?document.getElementById(state.modalStack.at(-1)):!dom.immersionOverlay.classList.contains('hidden')?dom.immersionOverlay:dom.reviewCard.classList.contains('fullscreen')?dom.reviewCard:null;
+  if(!overlay)return false;const items=overlayFocusables(overlay);if(!items.length)return false;const index=items.indexOf(document.activeElement),next=index<0?(event.shiftKey?items.length-1:0):(index+(event.shiftKey?-1:1)+items.length)%items.length;
+  event.preventDefault();items[next].focus();return true;
+}
 function closeToolbarMenu(){dom.toolbarMenu.classList.add('hidden');dom.toolbarMenuBtn.setAttribute('aria-expanded','false');document.body.classList.remove('toolbar-menu-open');}
 
 function syncCategoryOptions(selectedId) {
@@ -510,6 +529,7 @@ function saveEvent() {
   if(timeChanged&&(task||Number.isFinite(previous?.focusSeconds)))next.focusSeconds=Math.max(0,Math.round((range.endSlot-range.startSlot)*60000)/1000);
   pushHistory();if(state.editingEventId){const i=state.events.findIndex((e)=>e.id===state.editingEventId);if(i>=0)state.events[i]=next;}else state.events.push(next);
   if(task){
+    if(previous?.leftover!==next.leftover)delete task.leftoverCompletedAt;
     Object.assign(task,{categoryId:next.categoryId,categoryName:next.categoryName,subjectPath:[...next.subjectPath],color:next.color});
     task.fields={...task.fields,eventName:next.eventName,materialLocation:next.materialLocation,summary:next.textContent,notes:next.notes,leftover:next.leftover,mastery:next.mastery,actionType:next.actionTypes[0]||task.fields.actionType};
     recomputeTaskDuration(task);syncTaskRecords(task);
@@ -590,8 +610,23 @@ function startSelectedDetailEvent(){
 }
 
 function openLeftoverPool(){renderLeftoverPool();openModal('leftoverModal');}
-function renderLeftoverPool(){const events=state.events.filter((event)=>event.leftover).sort((a,b)=>Number(Boolean(a.leftoverCompletedAt))-Number(Boolean(b.leftoverCompletedAt))||b.date.localeCompare(a.date));if(!events.length){dom.leftoverList.innerHTML='<div class="review-empty">目前没有遗留内容</div>';return;}dom.leftoverList.innerHTML=events.map((event)=>{const subject=subjectById(event.categoryId),resolved=Boolean(event.leftoverCompletedAt);return`<article class="leftover-item ${resolved?'resolved':''}" style="--leftover-color:${subject?.color||event.color||'#6b7a72'}"><div></div><div><h4>${escapeHtml(eventTitle(event))}</h4><p>${escapeHtml(event.leftover)}</p><small>${escapeHtml(event.categoryName||'未分类')} · ${event.date}${resolved?` · 已于 ${normalizeDate(event.leftoverCompletedAt)} 清理`:''}</small></div><div class="leftover-actions">${resolved?'':`<button class="tool-btn primary" data-leftover-start="${event.id}">开始处理</button>`}<button class="tool-btn" data-leftover-view="${event.id}">详情</button><button class="tool-btn" data-leftover-toggle="${event.id}">${resolved?'恢复':'完成'}</button></div></article>`;}).join('');dom.leftoverList.querySelectorAll('[data-leftover-start]').forEach((button)=>button.onclick=()=>startLeftoverEvent(button.dataset.leftoverStart));dom.leftoverList.querySelectorAll('[data-leftover-view]').forEach((button)=>button.onclick=()=>{closeModal('leftoverModal');openEventDetail(button.dataset.leftoverView);});dom.leftoverList.querySelectorAll('[data-leftover-toggle]').forEach((button)=>button.onclick=()=>toggleLeftover(button.dataset.leftoverToggle));}
-function toggleLeftover(id,completed){const event=state.events.find((item)=>item.id===id);if(!event)return;pushHistory();const resolve=completed??!event.leftoverCompletedAt;if(resolve)event.leftoverCompletedAt=new Date().toISOString();else delete event.leftoverCompletedAt;state.reviews.filter((review)=>review.sourceEventId===event.id).forEach((review)=>review.leftoverResolved=resolve);saveBackup();if(!dom.leftoverModal.classList.contains('hidden'))renderLeftoverPool();if(!dom.eventDetailModal.classList.contains('hidden'))renderEventDetail();renderReviews();}
+function leftoverOwner(event){
+  const seen=new Set();let current=event;
+  while(current&&!seen.has(current.id)){
+    seen.add(current.id);const task=taskById(current.focusTaskId),sourceId=task?.leftoverEventId||task?.sourceEventId||current.sourceEventId||task?.planEventId;
+    const source=state.events.find(item=>item.id===sourceId&&item.leftover&&item.leftover===current.leftover);
+    if(source&&!seen.has(source.id)){current=source;continue;}
+    return state.events.find(item=>current.focusTaskId&&item.focusTaskId===current.focusTaskId&&item.leftover===current.leftover)||current;
+  }return current||event;
+}
+function leftoverEntries(){return [...new Map(state.events.filter(event=>event.leftover).map(event=>{const owner=leftoverOwner(event);return[owner.id,owner];})).values()];}
+function setLeftoverResolved(event,resolve,timestamp=new Date().toISOString()){
+  const owner=leftoverOwner(event),members=state.events.filter(item=>item.leftover&&leftoverOwner(item).id===owner.id),ids=new Set(members.map(item=>item.id));
+  members.forEach(item=>{if(resolve)item.leftoverCompletedAt=timestamp;else delete item.leftoverCompletedAt;const task=taskById(item.focusTaskId);if(task){if(resolve)task.leftoverCompletedAt=timestamp;else delete task.leftoverCompletedAt;}});
+  state.reviews.filter(review=>ids.has(review.sourceEventId)).forEach(review=>review.leftoverResolved=resolve);
+}
+function renderLeftoverPool(){const events=leftoverEntries().sort((a,b)=>Number(Boolean(a.leftoverCompletedAt))-Number(Boolean(b.leftoverCompletedAt))||b.date.localeCompare(a.date));if(!events.length){dom.leftoverList.innerHTML='<div class="review-empty">目前没有遗留内容</div>';return;}dom.leftoverList.innerHTML=events.map((event)=>{const subject=subjectById(event.categoryId),resolved=Boolean(event.leftoverCompletedAt);return`<article class="leftover-item ${resolved?'resolved':''}" style="--leftover-color:${subject?.color||event.color||'#6b7a72'}"><div></div><div><h4>${escapeHtml(eventTitle(event))}</h4><p>${escapeHtml(event.leftover)}</p><small>${escapeHtml(event.categoryName||'未分类')} · ${event.date}${resolved?` · 已于 ${normalizeDate(event.leftoverCompletedAt)} 清理`:''}</small></div><div class="leftover-actions">${resolved?'':`<button class="tool-btn primary" data-leftover-start="${event.id}">开始处理</button>`}<button class="tool-btn" data-leftover-view="${event.id}">详情</button><button class="tool-btn" data-leftover-toggle="${event.id}">${resolved?'恢复':'完成'}</button></div></article>`;}).join('');dom.leftoverList.querySelectorAll('[data-leftover-start]').forEach((button)=>button.onclick=()=>startLeftoverEvent(button.dataset.leftoverStart));dom.leftoverList.querySelectorAll('[data-leftover-view]').forEach((button)=>button.onclick=()=>{closeModal('leftoverModal');openEventDetail(button.dataset.leftoverView);});dom.leftoverList.querySelectorAll('[data-leftover-toggle]').forEach((button)=>button.onclick=()=>toggleLeftover(button.dataset.leftoverToggle));}
+function toggleLeftover(id,completed){const event=state.events.find((item)=>item.id===id);if(!event)return;pushHistory();setLeftoverResolved(event,completed??!leftoverOwner(event).leftoverCompletedAt);saveBackup();if(!dom.leftoverModal.classList.contains('hidden'))renderLeftoverPool();if(!dom.eventDetailModal.classList.contains('hidden'))renderEventDetail();renderReviews();}
 function startLeftoverEvent(id){const event=state.events.find((item)=>item.id===id);if(!event)return;closeModal('leftoverModal');closeModal('eventDetailModal');startSourceEvent(event,'learn',{leftoverEventId:event.id,suppressReviews:true});}
 function startSourceEvent(event,taskType='learn',extra={}){
   if(state.focus||state.pendingFocus){window.alert('请先暂停或处理当前任务。');return;}
@@ -704,9 +739,12 @@ function abandonReview(id){
 
 function moveReviewToToday(id){const r=state.reviews.find((x)=>x.id===id);if(!r)return;pushHistory();r.originalReviewDate=r.originalReviewDate||r.reviewDate;r.reviewDate=currentDateKey();r.completed=false;r.abandoned=false;saveBackup();renderReviews();}
 function delayReview(id) {
-  const r=state.reviews.find((x)=>x.id===id);if(!r)return;const value=window.prompt('推迟到哪一天？请输入 YYYY-MM-DD',dateKey(addDays(parseDate(r.reviewDate),1)));if(!value)return;
-  const target=parseDate(value);if(Number.isNaN(target.getTime())){window.alert('日期格式无效。');return;}const delta=daysBetween(parseDate(r.reviewDate),target);if(delta<0&&!window.confirm('目标日期早于当前安排，仍要调整吗？'))return;
-  pushHistory();state.reviews.filter((x)=>x.sourceEventId===r.sourceEventId&&x.reviewNumber>=r.reviewNumber&&!x.completed&&!x.abandoned).forEach((x)=>{x.originalReviewDate=x.originalReviewDate||x.reviewDate;x.reviewDate=dateKey(addDays(parseDate(x.reviewDate),delta));x.delayedAt=new Date().toISOString();});saveBackup();renderReviews();
+  const r=state.reviews.find((x)=>x.id===id);if(!r)return;
+  openInputDialog({title:'调整复习日期',label:'目标日期',type:'date',value:dateKey(addDays(parseDate(r.reviewDate),1)),allowEarlier:true,description:'当前及后续未完成、未放弃的批次会按相同天数调整；已完成批次保持不变。',onSubmit:value=>{
+    const target=parseDate(value);if(!/^\d{4}-\d{2}-\d{2}$/.test(value)||Number.isNaN(target.getTime())||dateKey(target)!==value)return '请输入有效日期。';
+    const delta=daysBetween(parseDate(r.reviewDate),target);if(delta<0&&!dom.inputDialogEarlier.checked)return '目标早于当前安排，请勾选“允许将安排提前”。';
+    pushHistory();state.reviews.filter((x)=>x.sourceEventId===r.sourceEventId&&x.reviewNumber>=r.reviewNumber&&!x.completed&&!x.abandoned).forEach((x)=>{x.originalReviewDate=x.originalReviewDate||x.reviewDate;x.reviewDate=dateKey(addDays(parseDate(x.reviewDate),delta));x.delayedAt=new Date().toISOString();});saveBackup();renderReviews();
+  }});
 }
 
 function openCalendar(){refreshReviewDay();state.calendarMonth=startOfMonth(state.currentDate);renderCalendar();openModal('calendarModal');}
@@ -853,15 +891,19 @@ function bindSubjectDetailEvents(subject) {
   const update=()=>{subject.name=document.getElementById('subjectNameInput').value.trim()||'未命名';subject.color=document.getElementById('subjectColorInput').value;subject.textSize=Number(document.getElementById('subjectTextSize').value);subject.textOpacity=Number(document.getElementById('subjectTextOpacity').value);subject.bold=document.getElementById('subjectBold').checked;subject.italic=document.getElementById('subjectItalic').checked;subject.reviewEnabled=document.getElementById('subjectReviewEnabled').checked;saveBackup();renderFocusSubjects();renderTimeline();};
   ['subjectNameInput','subjectColorInput','subjectTextSize','subjectTextOpacity','subjectBold','subjectItalic','subjectReviewEnabled'].forEach((id)=>document.getElementById(id).addEventListener('input',update));
   document.getElementById('deleteSubjectBtn').onclick=()=>deleteCategory(subject.id);
-  document.getElementById('addLevel2Btn').onclick=()=>{const name=window.prompt('二级科目名称');if(!name)return;subject.children.push({id:uid('level2'),name,reviewEnabled:true,children:[]});saveBackup();renderSubjects();};
+  document.getElementById('addLevel2Btn').onclick=()=>addSubjectLevel(subject.id);
   dom.subjectDetail.querySelectorAll('[data-subject-event]').forEach((button)=>button.onclick=()=>{closeModal('subjectsModal');openEventDetail(button.dataset.subjectEvent);});
   dom.subjectDetail.querySelectorAll('[data-level2]').forEach((row)=>row.querySelectorAll('input').forEach((input)=>input.oninput=()=>updateHierarchyRow(subject,row)));
-  dom.subjectDetail.querySelectorAll('[data-add-level3]').forEach((button)=>button.onclick=()=>{const level=subject.children.find((x)=>x.id===button.dataset.addLevel3),name=window.prompt('三级科目名称');if(!level||!name)return;level.children.push({id:uid('level3'),name,reviewEnabled:true});saveBackup();renderSubjects();});
+  dom.subjectDetail.querySelectorAll('[data-add-level3]').forEach((button)=>button.onclick=()=>addSubjectLevel(subject.id,button.dataset.addLevel3));
   dom.subjectDetail.querySelectorAll('[data-delete-level2]').forEach((button)=>button.onclick=()=>{subject.children=subject.children.filter((x)=>x.id!==button.dataset.deleteLevel2);saveBackup();renderSubjects();});
   dom.subjectDetail.querySelectorAll('[data-delete-level3]').forEach((button)=>button.onclick=()=>{subject.children.forEach((x)=>x.children=x.children.filter((t)=>t.id!==button.dataset.deleteLevel3));saveBackup();renderSubjects();});
 }
 function updateHierarchyRow(subject,row){const l2=subject.children.find((x)=>x.id===row.dataset.level2);if(!l2)return;if(row.dataset.level3){const l3=l2.children.find((x)=>x.id===row.dataset.level3);l3.name=row.querySelector('.level3-name').value.trim()||'未命名';l3.reviewEnabled=row.querySelector('.level3-review').checked;}else{l2.name=row.querySelector('.level2-name').value.trim()||'未命名';l2.reviewEnabled=row.querySelector('.level2-review').checked;}saveBackup();}
-function addCategory(){const name=window.prompt('学科名称','新学科');if(!name)return;pushHistory();const s=newSubject(name,'#6b7a72');state.categories.push(s);state.selectedSubjectId=s.id;saveBackup();refreshCategoryUI();renderSubjects();}
+function addCategory(){openInputDialog({title:'添加学科',label:'学科名称',onSubmit:name=>{if(state.categories.some(item=>item.name===name))return '同级学科名称不能重复。';pushHistory();const s=newSubject(name,'#6b7a72');state.categories.push(s);state.selectedSubjectId=s.id;saveBackup();refreshCategoryUI();renderSubjects();}});}
+function addSubjectLevel(subjectId,level2Id){
+  const subject=subjectById(subjectId),parent=level2Id?subject?.children.find(item=>item.id===level2Id):subject;if(!parent)return;
+  openInputDialog({title:level2Id?'添加三级科目':'添加二级科目',label:level2Id?'三级科目名称':'二级科目名称',onSubmit:name=>{if(parent.children.some(item=>item.name===name))return '同级科目名称不能重复。';pushHistory();parent.children.push({id:uid(level2Id?'level3':'level2'),name,reviewEnabled:true,children:[]});saveBackup();renderSubjects();refreshSubjectPathOptions();}});
+}
 function deleteCategory(id){const s=subjectById(id);if(!s||state.categories.length<=1){window.alert('至少保留一个学科。');return;}if(!window.confirm(`删除学科“${s.name}”？已有记录会保留。`))return;pushHistory();state.categories=state.categories.filter((x)=>x.id!==id);state.selectedSubjectId=state.categories[0]?.id||null;saveBackup();refreshCategoryUI();renderSubjects();}
 function buildYearHeatmap(subject,events){const year=new Date().getFullYear(),map=new Map();events.forEach((e)=>map.set(e.date,(map.get(e.date)||0)+focusSeconds(e)));let html='';for(let m=0;m<12;m++){let days='';for(let d=1;d<=31;d++){const date=new Date(year,m,d);if(date.getMonth()!==m){days+='<span></span>';continue;}const seconds=map.get(dateKey(date))||0,alpha=seconds?clamp(.15+seconds/7200,.18,1):0;days+=`<span class="heat-dot" title="${m+1}月${d}日 ${durationLabel(seconds)}" style="${seconds?`background:${rgba(subject.color,alpha)}`:''}"></span>`;}html+=`<div class="heat-month"><strong>${m+1}月</strong><div class="heat-month-days">${days}</div></div>`;}return html;}
 function calculateStreak(keys){const set=new Set(keys),today=startOfDay(new Date());let count=0,date=today;if(!set.has(dateKey(date)))date=addDays(date,-1);while(set.has(dateKey(date))){count+=1;date=addDays(date,-1);}return count;}
@@ -898,10 +940,13 @@ function renderUnfinishedTasks(){
 }
 function syncTaskRecords(task){
   const fields=task.fields||{};
+  const records=state.events.filter(event=>event.focusTaskId===task.id);
+  if(records.some(event=>Object.hasOwn(event,'leftover')&&event.leftover!==(fields.leftover||''))){delete task.leftoverCompletedAt;records.forEach(event=>delete event.leftoverCompletedAt);}
   if(state.focus?.taskId===task.id){Object.assign(state.focus,{categoryId:task.categoryId,categoryName:task.categoryName,subjectPath:task.subjectPath,color:task.color});state.focus.immersiveFields=clone(fields);state.focus.liveNotes=fields.notes||'';saveActiveFocus();}
   state.events.filter(event=>event.focusTaskId===task.id).forEach(event=>{
     Object.assign(event,{categoryId:task.categoryId,categoryName:task.categoryName,subjectPath:[...(task.subjectPath||[task.categoryId])],color:task.color,eventName:fields.eventName||task.categoryName+'任务',materialLocation:fields.materialLocation||'',textContent:fields.summary||'',notes:fields.notes||'',leftover:fields.leftover||'',mastery:fields.mastery||'unknown',actionTypes:[fields.actionType||(task.taskType==='review'?'review':'reading')],taskStatus:task.status});
   });
+  records.forEach(event=>{const owner=leftoverOwner(event),resolved=owner.leftoverCompletedAt||(owner.focusTaskId===task.id?task.leftoverCompletedAt:null);if(resolved)event.leftoverCompletedAt=resolved;else delete event.leftoverCompletedAt;});
   if(task.reviewSourceEventId){const source=state.events.find(event=>event.id===task.reviewSourceEventId);if(source){state.reviews.filter(review=>review.sourceEventId===source.id).forEach(review=>{const mastery=review.mastery;Object.assign(review,reviewSnapshot(source));if(review.completed)review.mastery=mastery;});syncPausedReviewSource(source);}}
 }
 function recomputeTaskDuration(task){
@@ -978,7 +1023,7 @@ function completeFocusTask(task,completedAt=Date.now()){
     if(deepest?.reviewEnabled!==false){task.reviewSourceEventId=first.id;generateReviews(first);}
   }
   if(task.planEventId&&source){source.planCompletedAt=task.completedAt;source.generatedEventId=last?.id;source.mastery=fields.mastery;}
-  if(task.leftoverEventId){const leftoverSource=state.events.find(event=>event.id===task.leftoverEventId);if(leftoverSource){leftoverSource.leftoverCompletedAt=task.completedAt;state.reviews.filter(review=>review.sourceEventId===leftoverSource.id).forEach(review=>review.leftoverResolved=true);}}
+  if(task.leftoverEventId){const leftoverSource=state.events.find(event=>event.id===task.leftoverEventId);if(leftoverSource)setLeftoverResolved(leftoverSource,true,task.completedAt);}
   return true;
 }
 
@@ -1114,7 +1159,8 @@ function exportImage(){
   c.fillStyle='#fff';c.fillRect(0,0,output.width,output.height);c.fillStyle='#20231f';c.font='800 34px "Segoe UI","Microsoft YaHei"';c.fillText('今日学习日报',42,54);c.fillStyle='#74786f';c.font='15px "Segoe UI"';c.fillText(`${state.currentDate.getFullYear()}年${dateLabel(state.currentDate)}`,43,82);
   const metrics=[['学习总时长',durationLabel(totalSeconds)],['记录事件',`${records.length} 项`],['待复习',`${pending} 项`]];metrics.forEach(([label,value],index)=>{const x=42+index*225;c.fillStyle='#f5f5f0';roundRect(c,x,112,205,96,16);c.fill();c.fillStyle='#74786f';c.font='12px "Segoe UI"';c.fillText(label,x+18,141);c.fillStyle='#20231f';c.font='800 26px "Segoe UI"';c.fillText(value,x+18,181);});
   const distribution=new Map();records.forEach((event)=>{const subject=subjectById(event.categoryId),key=subject?.id||'other',item=distribution.get(key)||{name:subject?.name||'未分类',color:subject?.color||event.color||'#88928b',seconds:0};item.seconds+=focusSeconds(event);distribution.set(key,item);});const items=[...distribution.values()],sum=items.reduce((value,item)=>value+item.seconds,0),cx=930,cy=161,radius=82;c.lineWidth=28;let angle=-Math.PI/2;if(sum){items.forEach((item)=>{const next=angle+item.seconds/sum*Math.PI*2;c.strokeStyle=item.color;c.beginPath();c.arc(cx,cy,radius,angle,next);c.stroke();angle=next;});}else{c.strokeStyle='#e5e7e2';c.beginPath();c.arc(cx,cy,radius,0,Math.PI*2);c.stroke();}c.fillStyle='#20231f';c.textAlign='center';c.font='800 21px "Segoe UI"';c.fillText(durationLabel(totalSeconds),cx,158);c.fillStyle='#74786f';c.font='11px "Segoe UI"';c.fillText('记录区总时长',cx,178);c.textAlign='left';items.slice(0,6).forEach((item,index)=>{const x=1060,y=125+index*27;c.fillStyle=item.color;c.beginPath();c.arc(x,y-4,5,0,Math.PI*2);c.fill();c.fillStyle='#3d443f';c.font='12px "Segoe UI"';c.fillText(`${item.name}  ${sum?Math.round(item.seconds/sum*100):0}%`,x+13,y);});
-  c.fillStyle='#20231f';c.font='800 17px "Segoe UI"';c.fillText('学习时间轴',42,287);c.fillStyle='#74786f';c.font='11px "Segoe UI"';c.fillText('箭头颜色代表学科；虚线代表复习任务',42,309);c.textAlign='center';c.font='800 12px "Segoe UI"';c.fillText('计划区',target.planWidth/2,348);c.fillText('记录区',target.planWidth+(target.width-target.planWidth)/2,348);drawTimeline(c,target,{exportMode:true});const a=document.createElement('a');a.href=output.toDataURL('image/png');a.download=`学习日报_${currentDateKey()}.png`;a.click();
+  c.fillStyle='#20231f';c.font='800 17px "Segoe UI"';c.fillText('学习时间轴',42,287);c.fillStyle='#74786f';c.font='11px "Segoe UI"';c.fillText('箭头颜色代表学科；虚线代表复习任务',42,309);c.textAlign='center';c.font='800 12px "Segoe UI"';c.fillText('计划区',target.planWidth/2,348);c.fillText('记录区',target.planWidth+(target.width-target.planWidth)/2,348);drawTimeline(c,target,{exportMode:true});
+  const url=output.toDataURL('image/png');dom.dailyReportPreview.src=url;dom.dailyReportDownload.href=url;dom.dailyReportDownload.download=`学习日报_${currentDateKey()}.png`;closeToolbarMenu();openModal('reportModal');
 }
 function downloadBlob(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 
@@ -1123,9 +1169,10 @@ function matchesShortcut(event,shortcut) {
   return event.key.toLowerCase()===key&&event.ctrlKey===parts.includes('ctrl')&&event.altKey===parts.includes('alt')&&event.shiftKey===parts.includes('shift')&&event.metaKey===parts.includes('meta');
 }
 function onKeydown(event) {
+  if(trapOverlayTab(event))return;
   const typing=['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName);
   if(!typing&&matchesShortcut(event,state.settings.shortcut)){event.preventDefault();toggleSelection();return;}
-  if(event.key==='Escape'){if(dom.reviewCard.classList.contains('fullscreen')){toggleReviewFullscreen();return;}if(!dom.planReminderModal.classList.contains('hidden')){snoozePlanReminder();return;}if(!dom.immersionOverlay.classList.contains('hidden')){exitImmersion();return;}cancelSelection();hideContextMenu();closeToolbarMenu();closeAllModals();}
+  if(event.key==='Escape'){if(state.modalStack.length){event.preventDefault();const id=state.modalStack.at(-1);if(id==='planReminderModal')snoozePlanReminder();else closeModal(id);return;}if(!dom.immersionOverlay.classList.contains('hidden')){exitImmersion();return;}if(dom.reviewCard.classList.contains('fullscreen')){toggleReviewFullscreen();return;}cancelSelection();hideContextMenu();closeToolbarMenu();closeAllModals();}
   if(!typing&&event.ctrlKey&&event.key.toLowerCase()==='z'){event.preventDefault();undo();}
   if(!typing&&event.ctrlKey&&event.key.toLowerCase()==='y'){event.preventDefault();redo();}
 }
@@ -1134,4 +1181,4 @@ function renderAll(){renderDate();renderTimeline();renderReviews();renderFocusSu
 updateFocusDurationUI();
 checkPlanReminders();
 state.planReminderTicker=setInterval(checkPlanReminders,15000);
-if('serviceWorker'in navigator&&/^https?:$/.test(location.protocol))navigator.serviceWorker.register('./sw.js?v=22').catch(()=>{});
+if('serviceWorker'in navigator&&/^https?:$/.test(location.protocol))navigator.serviceWorker.register('./sw.js?v=25').catch(()=>{});

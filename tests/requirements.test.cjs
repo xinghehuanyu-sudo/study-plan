@@ -6,10 +6,12 @@ const vm = require('node:vm');
 const root = path.resolve(__dirname, '..');
 const source = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
 const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+let harnessSequence = 0;
 
 // Isolated in-memory DOM/storage: these tests never read a user's browser data.
 function harness(storage = new Map(), initialTime = '2026-08-27T09:00:00') {
   let now = new Date(initialTime).getTime(), seq = 0;
+  const harnessId=++harnessSequence;
   const ids = [...html.matchAll(/id="([^"]+)"/g)].map(match => match[1]);
   assert.equal(ids.length, new Set(ids).size, 'duplicate HTML ids');
   const drawCalls = [], alerts = [], canvasStack = [], intervals = new Map(); let intervalSeq = 0;
@@ -47,13 +49,13 @@ function harness(storage = new Map(), initialTime = '2026-08-27T09:00:00') {
   const window = { ...eventTarget(), matchMedia: () => ({ matches: false }), devicePixelRatio: 1, alert: message => alerts.push(message), confirm: () => true };
   nodes.get('focusTaskType').value = 'learn'; nodes.get('focusTimerType').value = 'countup'; nodes.get('focusDuration').value = '25';
   class FakeDate extends Date { constructor(...args) { super(...(args.length ? args : [now])); } static now() { return now; } }
-  const context = vm.createContext({ document, Date: FakeDate, crypto: { randomUUID: () => String(++seq) },
+  const context = vm.createContext({ document, Date: FakeDate, crypto: { randomUUID: () => `${harnessId}-${++seq}` },
     localStorage: { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) },
     window,
     navigator: {}, location: { protocol: 'http:' }, setInterval: (handler, ms) => { const id = ++intervalSeq; intervals.set(id, { handler, ms }); return id; }, clearInterval: id => intervals.delete(id), setTimeout: () => 1, clearTimeout() {}, console });
   vm.runInContext(source, context, { filename: 'app.js' });
   for (const [id, node] of vm.runInContext('Object.entries(dom)', context)) assert.ok(node, `missing DOM id: ${id}`);
-  return { storage, nodes, drawCalls, alerts, click: id => nodes.get(id).click(), emitWindow: type => window.emit(type), emitDocument: type => document.emit(type), fireInterval: ms => { const timer = [...intervals.values()].find(timer => timer.ms === ms); assert.ok(timer, `missing ${ms}ms timer`); timer.handler(); }, run: code => vm.runInContext(code, context), advance: ms => { now += ms; }, setTime: text => { now = new Date(text).getTime(); }, json: code => JSON.parse(vm.runInContext(`JSON.stringify(${code})`, context)) };
+  return { storage, nodes, drawCalls, alerts, click: id => nodes.get(id).click(), emitWindow: (type,event) => window.emit(type,event), emitDocument: (type,event) => document.emit(type,event), fireInterval: ms => { const timer = [...intervals.values()].find(timer => timer.ms === ms); assert.ok(timer, `missing ${ms}ms timer`); timer.handler(); }, run: code => vm.runInContext(code, context), advance: ms => { now += ms; }, setTime: text => { now = new Date(text).getTime(); }, json: code => JSON.parse(vm.runInContext(`JSON.stringify(${code})`, context)) };
 }
 
 function saveEditedEvent(h, eventExpression, values) {
@@ -459,4 +461,85 @@ test('HTML, service worker and cached local assets use one consistent resource v
   for(const asset of cache.assets){assert.ok(fs.existsSync(path.join(root,asset.split('?')[0])));if(/\.(js|css)\?/.test(asset))assert.ok(asset.endsWith(`?v=${version}`));}
   const manifest=JSON.parse(fs.readFileSync(path.join(root,'manifest.webmanifest'),'utf8'));
   assert.ok(fs.existsSync(path.join(root,manifest.start_url)));for(const icon of manifest.icons)assert.ok(fs.existsSync(path.join(root,icon.src)));
+});
+
+function submitDialog(h, value) { h.nodes.get('inputDialogValue').value=value; h.nodes.get('inputDialogForm').emit('submit'); }
+
+test('browser QA: subject creation uses an inline form, validates blank/duplicate names and supports undo', () => {
+  const h=harness();h.run('addCategory()');submitDialog(h,'   ');
+  assert.equal(h.run('state.categories.length'),3);assert.match(h.nodes.get('inputDialogError').textContent,/填写/);
+  submitDialog(h,'数学');assert.match(h.nodes.get('inputDialogError').textContent,/重复/);
+  submitDialog(h,'验收科目');assert.equal(h.run('state.categories.length'),4);assert.equal(h.run('state.inputDialog'),null);
+  h.run('undo()');assert.equal(h.run('state.categories.length'),3);h.run('redo()');assert.equal(h.run('state.categories.length'),4);
+  assert.doesNotMatch(source,/window\.prompt\(/);
+});
+
+test('browser QA: inline second/third-level creation supports cancel and hierarchy paths', () => {
+  const h=harness();h.run('addSubjectLevel(state.categories[0].id)');submitDialog(h,'高数');
+  h.run('addSubjectLevel(state.categories[0].id,state.categories[0].children[0].id)');submitDialog(h,'偏导');
+  assert.ok(h.json('subjectPathOptions()').some(item=>item.label==='数学 / 高数 / 偏导'));
+  h.run('addSubjectLevel(state.categories[0].id);closeModal("inputDialogModal")');submitDialog(h,'不应保存');
+  assert.equal(h.run('state.categories[0].children.length'),1);
+});
+
+test('browser QA: inline rescheduling rejects invalid/earlier dates and shifts only pending batches', () => {
+  const h=harness();seedReviewSource(h);h.run('state.reviews[0].completed=true;delayReview(state.reviews[1].id)');
+  const before=h.json('state.reviews');submitDialog(h,'2026-02-30');assert.deepEqual(h.json('state.reviews'),before);
+  submitDialog(h,'2026-08-29');assert.match(h.nodes.get('inputDialogError').textContent,/提前/);assert.deepEqual(h.json('state.reviews'),before);
+  submitDialog(h,'2026-09-01');assert.deepEqual(h.json('state.reviews.map(r=>r.reviewDate)'),['2026-08-28','2026-09-01','2026-09-05','2026-09-12','2026-09-28']);
+  h.run('undo()');assert.deepEqual(h.json('state.reviews'),before);
+});
+
+test('browser QA: Escape closes the top dialog before the fullscreen review list', () => {
+  const h=harness();h.run('dom.reviewCard.classList.add("fullscreen");openModal("reviewDetailModal");openInputDialog({title:"日期",label:"日期",onSubmit(){}})');
+  h.emitWindow('keydown',{key:'Escape'});assert.equal(h.run('state.inputDialog'),null);assert.deepEqual(h.json('state.modalStack'),['reviewDetailModal']);
+  h.emitWindow('keydown',{key:'Escape'});assert.deepEqual(h.json('state.modalStack'),[]);assert.equal(h.run('dom.reviewCard.classList.contains("fullscreen")'),true);
+  const css=fs.readFileSync(path.join(root,'styles.css'),'utf8');
+  assert.ok(Number(/\.modal \{[^}]*z-index:\s*(\d+)/.exec(css)[1])>Number(/\.review-card\.fullscreen \{[^}]*z-index:\s*(\d+)/.exec(css)[1]));
+});
+
+test('browser QA: Tab and Shift+Tab move within the active overlay without reaching background controls', () => {
+  const h=harness();h.run(`var first={disabled:false,tabIndex:0,getClientRects:()=>[{}],focus(){document.activeElement=this;}},second={...first};
+    dom.immersionOverlay.querySelectorAll=()=>[first,second];dom.immersionOverlay.classList.remove('hidden');document.activeElement=first;`);
+  h.emitWindow('keydown',{key:'Tab',shiftKey:false});assert.equal(h.run('document.activeElement===second'),true);
+  h.emitWindow('keydown',{key:'Tab',shiftKey:false});assert.equal(h.run('document.activeElement===first'),true);
+  h.emitWindow('keydown',{key:'Tab',shiftKey:true});assert.equal(h.run('document.activeElement===second'),true);
+});
+
+test('browser QA: monthly cells contain scrolling records and long subject filter labels do not shrink', () => {
+  const css=fs.readFileSync(path.join(root,'styles.css'),'utf8');
+  assert.match(css,/\.calendar-day \{[^}]*display: flex;[^}]*overflow: hidden;/);
+  assert.match(css,/\.calendar-day-events \{[^}]*min-height: 0;[^}]*overflow: auto;/);
+  assert.match(css,/\.subject-filter \{[^}]*flex: 0 0 auto;[^}]*white-space: nowrap;/);
+});
+
+test('browser QA: one leftover entry per task, resolution/restoration propagates and survives another segment', () => {
+  const h=harness();h.run("startFocus(state.categories[0].id);state.focus.immersiveFields.leftover='第6页';");h.advance(10000);h.run('pauseFocus();resumeFocusTask(state.focusTasks[0].id)');h.advance(10000);h.run('pauseFocus()');
+  assert.equal(h.run('leftoverEntries().length'),1);h.run('toggleLeftover(state.events[1].id)');
+  assert.equal(h.run('state.events.every(e=>e.leftoverCompletedAt)'),true);
+  const restored=harness(h.storage);restored.run('resumeFocusTask(state.focusTasks[0].id)');restored.advance(10000);restored.run('pauseFocus()');
+  assert.equal(restored.run('state.events.every(e=>e.leftoverCompletedAt)'),true);restored.run('toggleLeftover(state.events[2].id,false)');
+  assert.equal(restored.run('state.events.some(e=>e.leftoverCompletedAt)'),false);
+  restored.run('undo()');assert.equal(restored.run('state.events.every(e=>e.leftoverCompletedAt)'),true);
+});
+
+test('browser QA: inherited review leftovers share the source, unrelated same text stays separate', () => {
+  const h=harness();seedReviewSource(h);h.run("state.events[0].leftover='第6页';startReview(state.reviews[0].id)");h.advance(10000);h.run('pauseFocus()');
+  assert.equal(h.run('leftoverEntries().length'),1);h.run('toggleLeftover(state.events[1].id,true)');assert.equal(h.run('state.reviews.every(r=>r.leftoverResolved)'),true);
+  h.run("state.events.push({...state.events[0],id:'unrelated',focusTaskId:null,sourceEventId:null});");assert.equal(h.run('leftoverEntries().length'),2);
+});
+
+test('browser QA: changing leftover content reopens the task and completing a handling task resolves its source group', () => {
+  const h=harness();h.run("startFocus(state.categories[0].id);state.focus.immersiveFields.leftover='第6页'");h.advance(10000);h.run('pauseFocus();toggleLeftover(state.events[0].id,true)');
+  saveEditedEvent(h,'state.events[0]',{eventLeftover:'第7页'});assert.equal(h.run('Boolean(state.events[0].leftoverCompletedAt||state.focusTasks[0].leftoverCompletedAt)'),false);
+  h.run('completeFocusTask(state.focusTasks[0]);startLeftoverEvent(state.events[0].id)');h.advance(10000);h.run('pauseFocus();completeFocusTask(state.focusTasks[1])');
+  assert.equal(h.run('leftoverEntries().length'),1);assert.equal(h.run('state.events.every(e=>e.leftoverCompletedAt)'),true);
+});
+
+test('browser QA: daily report exposes a preview and a named PNG download instead of silent export', () => {
+  const h=harness();h.run('exportImage()');
+  assert.equal(h.run('state.modalStack.at(-1)'), 'reportModal');
+  assert.match(h.nodes.get('dailyReportPreview').src,/^data:image\/png/);
+  assert.equal(h.nodes.get('dailyReportDownload').href,h.nodes.get('dailyReportPreview').src);
+  assert.equal(h.nodes.get('dailyReportDownload').download,'学习日报_2026-08-27.png');
 });
