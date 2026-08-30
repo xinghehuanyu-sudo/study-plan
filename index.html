@@ -3,18 +3,25 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="screen-orientation" content="landscape" />
+  <meta name="x5-orientation" content="landscape" />
   <meta name="theme-color" content="#f7f4ee" />
   <title>学习计划时间轴</title>
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="styles.css?v=25" />
+  <link rel="stylesheet" href="styles.css?v=30" />
 </head>
 <body>
+  <div class="portrait-orientation-gate" role="status" aria-live="polite">
+    <div class="orientation-phone" aria-hidden="true"><span></span></div>
+    <div><strong>请将手机横过来</strong><p>学习时间轴已针对横屏排版，旋转设备后即可继续使用。</p></div>
+  </div>
   <div class="app-shell">
     <header class="toolbar">
       <div class="brand"><span class="brand-mark">学</span><div><strong>学习日志</strong><small>专注每一天</small></div></div>
       <nav class="primary-nav" aria-label="主要功能">
         <button id="addEventBtn" class="tool-btn primary" title="在时间轴选时间"><span class="tool-glyph">＋</span><span class="tool-label">选时间</span></button>
+        <button id="mergeEventsBtn" class="tool-btn" title="多选合并学习事件"><span class="tool-glyph">并</span><span class="tool-label">合并</span></button>
         <button id="leftoverBtn" class="tool-btn" title="遗留待清池"><span class="tool-glyph">✓</span><span class="tool-label">待清池</span></button>
         <button id="subjectsBtn" class="tool-btn" title="学科管理"><span class="tool-glyph">科</span><span class="tool-label">学科</span></button>
         <button id="statsBtn" class="tool-btn" title="学习统计"><span class="tool-glyph">⌁</span><span class="tool-label">统计</span></button>
@@ -46,8 +53,17 @@
       </div>
     </header>
 
+    <div id="eventMergeBar" class="event-merge-bar hidden" role="region" aria-label="合并学习事件">
+      <strong id="eventMergeCount">已选择 0 条</strong>
+      <input id="eventMergeName" type="text" maxlength="100" placeholder="统一事件名称（留空沿用第一条）" aria-label="合并后的统一事件名称" />
+      <span>点击时间轴事件进行多选，至少选择两条同一学科的学习记录</span>
+      <button id="confirmEventMergeBtn" class="tool-btn primary" disabled>合并并重建复习</button>
+      <button id="cancelEventMergeBtn" class="tool-btn">取消</button>
+    </div>
+
     <div id="layoutEditBar" class="layout-edit-bar hidden">
-      <span>布局编辑中：拖动高亮边框调整左右栏、专注/复习高度；时间轴中线可调整计划/记录比例</span>
+      <label>板块布局 <select id="layoutMode"><option value="stacked">两列 · 专注与复习上下排列</option><option value="columns">三列 · 时间轴 / 专注 / 复习</option></select></label>
+      <span>拖动边框调整宽高；未完成任务会自动撑开专注区</span>
       <button id="finishLayoutBtn" class="tool-btn primary">完成</button>
       <button id="resetLayoutBtn" class="tool-btn">恢复默认</button>
     </div>
@@ -56,13 +72,14 @@
       <section class="timeline-panel layout-region" aria-label="每日时间轴">
         <div class="timeline-legend"><span>计划区</span><span>记录区</span></div>
         <div id="timelineScroll" class="timeline-scroll"><canvas id="timelineCanvas"></canvas></div>
+        <div id="timelineTooltip" class="timeline-tooltip hidden" role="tooltip"></div>
       </section>
 
       <div id="sideResizeHandle" class="layout-resize-handle vertical" aria-hidden="true"></div>
 
       <aside class="side-panel layout-region">
         <section id="focusCard" class="focus-card">
-          <div class="section-heading"><div><span class="eyebrow">FOCUS</span><h2>专注计时</h2></div><div class="focus-heading-actions"><span id="focusStatus" class="status-pill">未开始</span><button id="focusCollapseBtn" class="eye-btn" type="button" title="收纳专注计时" aria-label="收纳专注计时">◉</button></div></div>
+          <div class="section-heading"><div><h2>专注计时</h2></div><div class="focus-heading-actions"><span id="focusStatus" class="status-pill">未开始</span><button id="focusCollapseBtn" class="eye-btn" type="button" title="收纳专注计时" aria-label="收纳专注计时">◉</button></div></div>
           <div id="focusBody">
             <div id="focusSubjects" class="subject-list"></div>
             <div class="focus-controls">
@@ -85,7 +102,7 @@
 
         <section id="reviewCard" class="review-card">
           <div class="review-header">
-            <div class="review-heading-row"><div><span class="eyebrow">REVIEW</span><h2>每日复习清单</h2></div><div class="filter-row"><button class="filter-btn active" data-filter="today">当日</button><button class="filter-btn" data-filter="week">本周</button><button class="filter-btn" data-filter="all">全部</button></div><span id="reviewListSummary" class="review-list-summary">0 项</span><button id="reviewFullscreenBtn" class="icon-btn review-fullscreen-btn" type="button" aria-label="全屏查看复习清单" title="全屏查看">⛶</button></div>
+            <div class="review-heading-row"><div><h2>复习清单</h2></div><div class="filter-row"><button class="filter-btn active" data-filter="today">当日</button><button class="filter-btn" data-filter="week">本周</button><button class="filter-btn" data-filter="all">全部</button></div><span id="reviewListSummary" class="review-list-summary">0 项</span><button id="reviewFullscreenBtn" class="icon-btn review-fullscreen-btn" type="button" aria-label="全屏查看复习清单" title="全屏查看">⛶</button></div>
           </div>
           <div id="reviewList" class="review-list"></div>
         </section>
@@ -201,17 +218,17 @@
       <div class="module-toolbar stats-toolbar">
         <div id="statsSubjectFilters" class="subject-filter-list"></div>
         <div class="stats-controls">
-          <label>统计范围<select id="statsRange"><option value="day">本日</option><option value="week">本周</option><option value="month" selected>本月</option><option value="year">本年</option><option value="custom">自定义</option></select></label>
+          <label>统计范围<select id="statsRange"><option value="day" selected>本日</option><option value="week">本周</option><option value="month">本月</option><option value="year">本年</option><option value="custom">自定义</option></select></label>
           <div id="statsCustomRange" class="stats-custom-range hidden"><input id="statsCustomFrom" type="date" aria-label="统计开始日期" /><span>至</span><input id="statsCustomTo" type="date" aria-label="统计结束日期" /></div>
           <label>分布图<select id="statsChartType"><option value="bar">柱状图</option><option value="pie">扇形图</option></select></label>
         </div>
       </div>
       <div class="modal-body stats-grid">
-        <section class="stat-card" data-stat-section="summary"><button class="eye-btn" data-toggle-stat="summary" title="显示或隐藏">◉</button><h4>累计专注</h4><div class="metric-row"><div><strong id="statTotalCount">0</strong><span>次数</span></div><div><strong id="statTotalTime">0m</strong><span>总时长</span></div><div><strong id="statDailyAverage">0m</strong><span>日均</span></div></div></section>
-        <section class="stat-card" data-stat-section="today"><button class="eye-btn" data-toggle-stat="today">◉</button><h4>今日专注</h4><div class="metric-row"><div><strong id="statTodayCount">0</strong><span>次数</span></div><div><strong id="statTodayTime">0m</strong><span>时长</span></div></div></section>
-        <section class="stat-card chart-card" data-stat-section="distribution"><button class="eye-btn" data-toggle-stat="distribution">◉</button><h4>学科时长分布</h4><canvas id="distributionChart" width="520" height="220"></canvas></section>
-        <section class="stat-card chart-card" data-stat-section="monthly"><button class="eye-btn" data-toggle-stat="monthly">◉</button><h4>本月每日专注</h4><canvas id="monthlyChart" width="760" height="230"></canvas></section>
-        <section class="stat-card chart-card" data-stat-section="yearly"><button class="eye-btn" data-toggle-stat="yearly">◉</button><h4>本年每月专注</h4><canvas id="yearlyChart" width="760" height="230"></canvas></section>
+        <section class="stat-card" data-stat-section="summary"><button class="eye-btn" data-toggle-stat="summary" title="显示或隐藏">◉</button><h4>范围内专注</h4><div class="metric-row"><div><strong id="statTotalCount">0</strong><span>次数</span></div><div><strong id="statTotalTime">0m</strong><span>总时长</span></div><div><strong id="statDailyAverage">0m</strong><span>日均</span></div></div></section>
+        <section class="stat-card" data-stat-section="today"><button class="eye-btn" data-toggle-stat="today">◉</button><h4>今日专注</h4><div class="metric-row"><div><strong id="statTodayCount">0</strong><span>次数</span></div><div><strong id="statTodayTime">0m</strong><span>时长</span></div></div><div id="statTodaySplit" class="stat-today-split"></div></section>
+        <section class="stat-card chart-card" data-stat-section="distribution"><button class="eye-btn" data-toggle-stat="distribution">◉</button><h4>学科时长分布</h4><p class="chart-legend">实色：学习　斜线：复习 · 悬停或聚焦查看时长</p><canvas id="distributionChart" width="520" height="220"></canvas><div id="distributionDetails" class="distribution-details"></div></section>
+        <section class="stat-card chart-card" data-stat-section="monthly"><button class="eye-btn" data-toggle-stat="monthly">◉</button><h4>本月每日专注</h4><div class="chart-scroll"><canvas id="monthlyChart" width="760" height="230"></canvas></div></section>
+        <section class="stat-card chart-card" data-stat-section="yearly"><button class="eye-btn" data-toggle-stat="yearly">◉</button><h4>本年每月专注</h4><div class="chart-scroll"><canvas id="yearlyChart" width="760" height="230"></canvas></div></section>
       </div>
     </div>
   </div>
@@ -267,7 +284,7 @@
     <div class="modal-card event-detail-card">
       <div class="modal-header"><div><span class="eyebrow">LEARNING DETAIL</span><h3 id="eventDetailTitle">事件详情</h3></div><button class="icon-btn" data-close="eventDetailModal" aria-label="关闭">×</button></div>
       <div id="eventDetailBody" class="modal-body event-detail-body"></div>
-      <div class="modal-footer"><button id="eventDetailEditBtn" class="tool-btn">编辑事件设置</button><button id="eventDetailStartBtn" class="tool-btn primary">开始学习</button></div>
+      <div class="modal-footer"><button id="eventDetailEditBtn" class="tool-btn">编辑事件设置</button><button id="eventDetailReopenBtn" class="tool-btn">标记为未完成</button><button id="eventDetailStartBtn" class="tool-btn primary">开始学习</button></div>
     </div>
   </div>
 
@@ -298,12 +315,18 @@
 
   <div id="immersionOverlay" class="immersion-overlay hidden">
     <div id="immersionBackdrop" class="immersion-backdrop"></div>
-    <div class="immersion-window-actions"><button id="immersionPipBtn" class="immersion-window-btn hidden" type="button" hidden aria-hidden="true" aria-label="打开悬浮小窗" title="悬浮小窗">▣</button><button id="exitImmersionBtn" class="immersion-exit" aria-label="退出沉浸界面" title="返回主界面，计时继续">返回</button></div>
+    <div class="immersion-window-actions"><button id="immersionSwapBtn" class="immersion-window-btn" type="button" aria-label="调换计时与记录栏" title="调换左右栏" aria-pressed="false">⇄</button><button id="immersionPipBtn" class="immersion-window-btn hidden" type="button" hidden aria-hidden="true" aria-label="打开悬浮小窗" title="悬浮小窗">▣</button><button id="exitImmersionBtn" class="immersion-exit" aria-label="退出沉浸界面" title="返回主界面，计时继续">返回</button></div>
     <div id="immersionContent" class="immersion-content">
+      <section class="immersion-timer-column" aria-label="计时信息">
       <span id="immersionMode" class="immersion-mode">正计时</span>
       <div id="immersionClock" class="immersion-clock">00:00:00</div>
       <div id="immersionSubject" class="immersion-subject"></div>
+      <div id="immersionTotal" class="immersion-total"></div>
+      <div id="immersionCountdown" class="immersion-countdown"></div>
+      <blockquote id="immersionQuote" class="immersion-quote"></blockquote>
       <section id="immersionReviewCard" class="immersion-review-card hidden"></section>
+      <div class="immersion-task-actions"><button id="immersionPauseBtn" class="tool-btn">暂停，稍后继续</button><button id="immersionStopBtn" class="immersion-stop">完成 / 结束计时</button></div>
+      </section>
       <section id="immersionInputCard" class="immersion-input-card">
         <div class="immersion-input-heading"><strong>沉浸记录</strong><span>按 Tab 依次切换字段</span></div>
         <div class="immersion-input-grid">
@@ -312,13 +335,10 @@
           <label class="wide">学习摘要<input id="immersionSummary" type="text" maxlength="160" placeholder="一句话概括完成内容" /></label>
           <label class="wide">学习笔记<textarea id="immersionLiveNote" rows="2" maxlength="1200" placeholder="推导、易错点与自己的理解"></textarea></label>
           <label class="wide">遗留内容<input id="immersionLeftover" type="text" maxlength="240" placeholder="尚未解决的问题，可留空" /></label>
-          <label>学习动作<select id="immersionActionType"><option value="reading">阅读</option><option value="video">视频</option><option value="practice">习题</option><option value="memorize">背诵</option><option value="review">复习</option></select></label>
+          <label>学习动作<select id="immersionActionType"><option value="video" selected>视频</option><option value="practice">习题</option><option value="memorize">背诵</option><option value="reading">阅读</option><option value="review">复习</option></select></label>
           <label>掌握程度<select id="immersionMastery"><option value="unknown">尚未判断</option><option value="weak">薄弱</option><option value="partial">部分掌握</option><option value="mastered">已掌握</option></select></label>
         </div>
       </section>
-      <div id="immersionCountdown" class="immersion-countdown"></div>
-      <blockquote id="immersionQuote" class="immersion-quote"></blockquote>
-      <div class="immersion-task-actions"><button id="immersionPauseBtn" class="tool-btn">暂停，稍后继续</button><button id="immersionStopBtn" class="immersion-stop">完成 / 结束计时</button></div>
     </div>
   </div>
 
@@ -336,6 +356,6 @@
   </div>
   <div id="contextMenu" class="context-menu hidden"></div>
   <input id="importInput" type="file" accept="application/json" hidden />
-  <script src="app.js?v=25"></script>
+  <script src="app.js?v=30"></script>
 </body>
 </html>

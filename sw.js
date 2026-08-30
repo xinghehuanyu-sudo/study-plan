@@ -1,5 +1,5 @@
-const CACHE_NAME = 'learning-journal-v25';
-const APP_SHELL = ['./', './index.html', './styles.css?v=25', './app.js?v=25', './manifest.webmanifest', './icon.svg'];
+const CACHE_NAME = 'learning-journal-v30';
+const APP_SHELL = ['./', './index.html', './styles.css?v=30', './app.js?v=30', './manifest.webmanifest', './icon.svg'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)));
@@ -7,17 +7,28 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)))));
+  event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((key) => key.startsWith('learning-journal-v') && key !== CACHE_NAME).map((key) => caches.delete(key)))));
   self.clients.claim();
 });
 
 self.addEventListener('fetch', (event) => {
-  if (event.request.method !== 'GET') return;
+  if (event.request.method !== 'GET' || new URL(event.request.url).origin !== self.location.origin) return;
   event.respondWith(fetch(event.request).then((response) => {
-    const copy = response.clone();
-    caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+    // Do not replace a working offline shell with an HTTP error page.
+    const isShell = APP_SHELL.some((asset) => new URL(asset, self.location.href).href === event.request.url);
+    if (response.ok && isShell) {
+      const copy = response.clone();
+      event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy)).catch(() => {}));
+    }
     return response;
-  }).catch(() => caches.match(event.request).then((cached) => cached || caches.match('./index.html'))));
+  }).catch(async () => {
+    const cache = await caches.open(CACHE_NAME).catch(() => null);
+    const cached = await cache?.match(event.request);
+    if (cached) return cached;
+    // HTML is only a navigation fallback, never a stylesheet or script response.
+    if (event.request.mode === 'navigate') return (await cache?.match('./index.html')) || Response.error();
+    return Response.error();
+  }));
 });
 
 self.addEventListener('notificationclick', (event) => {

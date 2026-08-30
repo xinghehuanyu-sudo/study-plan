@@ -14,10 +14,11 @@ function harness(storage = new Map(), initialTime = '2026-08-27T09:00:00') {
   const harnessId=++harnessSequence;
   const ids = [...html.matchAll(/id="([^"]+)"/g)].map(match => match[1]);
   assert.equal(ids.length, new Set(ids).size, 'duplicate HTML ids');
-  const drawCalls = [], alerts = [], canvasStack = [], intervals = new Map(); let intervalSeq = 0;
+  const drawCalls = [], alerts = [], createdNodes = [], transforms = [], canvasStack = [], intervals = new Map(); let intervalSeq = 0;
   const canvas = new Proxy({ font: '10px sans-serif', globalAlpha: 1,
     measureText: text => ({ width: Array.from(String(text)).length * 7 }),
-    fillText(text, x, y) { drawCalls.push({ text: String(text), x, y, font: this.font, globalAlpha: this.globalAlpha }); },
+    fillText(text, x, y) { drawCalls.push({ text: String(text), x, y, font: this.font, globalAlpha: this.globalAlpha, fillStyle: this.fillStyle }); },
+    setTransform(...args) { transforms.push(args); },
     save() { canvasStack.push({ font: this.font, globalAlpha: this.globalAlpha }); },
     restore() { Object.assign(this, canvasStack.pop() || {}); }
   }, { get: (obj, key) => obj[key] ?? (() => {}) });
@@ -45,7 +46,7 @@ function harness(storage = new Map(), initialTime = '2026-08-27T09:00:00') {
   }
   const document = { ...eventTarget(), getElementById: id => nodes.get(id) || null,
     querySelectorAll: () => [], querySelector: () => null, activeElement: null, hidden: false,
-    documentElement: makeNode('root'), body: makeNode('body'), createElement: () => makeNode('new') };
+    documentElement: makeNode('root'), body: makeNode('body'), createElement: tag => { const node=makeNode('new');node.tagName=tag.toUpperCase();createdNodes.push(node);return node; } };
   const window = { ...eventTarget(), matchMedia: () => ({ matches: false }), devicePixelRatio: 1, alert: message => alerts.push(message), confirm: () => true };
   nodes.get('focusTaskType').value = 'learn'; nodes.get('focusTimerType').value = 'countup'; nodes.get('focusDuration').value = '25';
   class FakeDate extends Date { constructor(...args) { super(...(args.length ? args : [now])); } static now() { return now; } }
@@ -55,7 +56,7 @@ function harness(storage = new Map(), initialTime = '2026-08-27T09:00:00') {
     navigator: {}, location: { protocol: 'http:' }, setInterval: (handler, ms) => { const id = ++intervalSeq; intervals.set(id, { handler, ms }); return id; }, clearInterval: id => intervals.delete(id), setTimeout: () => 1, clearTimeout() {}, console });
   vm.runInContext(source, context, { filename: 'app.js' });
   for (const [id, node] of vm.runInContext('Object.entries(dom)', context)) assert.ok(node, `missing DOM id: ${id}`);
-  return { storage, nodes, drawCalls, alerts, click: id => nodes.get(id).click(), emitWindow: (type,event) => window.emit(type,event), emitDocument: (type,event) => document.emit(type,event), fireInterval: ms => { const timer = [...intervals.values()].find(timer => timer.ms === ms); assert.ok(timer, `missing ${ms}ms timer`); timer.handler(); }, run: code => vm.runInContext(code, context), advance: ms => { now += ms; }, setTime: text => { now = new Date(text).getTime(); }, json: code => JSON.parse(vm.runInContext(`JSON.stringify(${code})`, context)) };
+  return { storage, nodes, drawCalls, alerts, createdNodes, transforms, click: id => nodes.get(id).click(), emitWindow: (type,event) => window.emit(type,event), emitDocument: (type,event) => document.emit(type,event), fireInterval: ms => { const timer = [...intervals.values()].find(timer => timer.ms === ms); assert.ok(timer, `missing ${ms}ms timer`); timer.handler(); }, run: code => vm.runInContext(code, context), advance: ms => { now += ms; }, setTime: text => { now = new Date(text).getTime(); }, json: code => JSON.parse(vm.runInContext(`JSON.stringify(${code})`, context)) };
 }
 
 function saveEditedEvent(h, eventExpression, values) {
@@ -162,10 +163,12 @@ test('timeline chooses the longest free arrow row and only folds for same-hour n
   assert.equal(h.run('eventLabelPlacement(state.events[0],createLayout(900,56)).x'),h.run('eventSegments(state.events[0],createLayout(900,56))[1].x1'));
 });
 
-test('without following event, long title and adjacent material wrap completely', () => {
+test('063 long timeline labels stay on one fixed-height row and expose their full text for tooltip', () => {
   const h=harness();h.run("state.events=[{id:'a',date:currentDateKey(),halfZone:'record',startSlot:600,endSlot:640,eventName:'长'.repeat(100),materialLocation:'资料P1'}]");
-  const text=h.run("layoutEventLabel(ctx,state.events[0],createLayout(900,56)).parts.map(p=>p.text).join('')");assert.equal(text,'长'.repeat(100)+' 资料P1');
-  assert.ok(h.run('createLayout(500,56).rowHeights[10]')>56);
+  assert.equal(h.run("layoutEventLabel(ctx,state.events[0],createLayout(900,56)).truncated"),true);
+  assert.equal(h.run("layoutEventLabel(ctx,state.events[0],createLayout(900,56)).fullText.endsWith('资料P1')"),true);
+  assert.match(h.run("layoutEventLabel(ctx,state.events[0],createLayout(900,56)).parts.map(p=>p.text).join('')"),/…$/);
+  assert.equal(h.run('createLayout(500,56).rowHeights[10]'),56);
 });
 
 test('completed child subject with reviews disabled generates none', () => {
@@ -273,7 +276,7 @@ test('R4 subject edits apply to every task segment, resumed segments and review 
   assert.equal(h.run('state.events[2].categoryName'), '英语'); assert.equal(h.run('state.reviews.length'), 0);
 });
 
-test('R5 editing a subminute record preserves milliseconds, duration and precise detail text', () => {
+test('R5 editing preserves millisecond data while 062 detail display rounds to whole seconds', () => {
   const h = harness(new Map(), '2026-08-27T09:00:05.125');
   h.run('startFocus(state.categories[0].id)'); h.advance(20125); h.run('pauseFocus()');
   const before = h.json('[state.events[0].startSlot,state.events[0].endSlot,state.events[0].focusSeconds]');
@@ -281,7 +284,7 @@ test('R5 editing a subminute record preserves milliseconds, duration and precise
   assert.deepEqual(h.json('[state.events[0].startSlot,state.events[0].endSlot,state.events[0].focusSeconds]'), before);
   assert.equal(h.run('state.events[0].eventName'), '短时段更名');
   h.run('openEventDetail(state.events[0].id)');
-  assert.match(h.nodes.get('eventDetailBody').innerHTML, /09:00:05\.125–09:00:25\.25/);
+  assert.match(h.nodes.get('eventDetailBody').innerHTML, /09:00:05–09:00:25/);
   assert.equal(h.alerts.length, 0);
 });
 
@@ -542,4 +545,255 @@ test('browser QA: daily report exposes a preview and a named PNG download instea
   assert.match(h.nodes.get('dailyReportPreview').src,/^data:image\/png/);
   assert.equal(h.nodes.get('dailyReportDownload').href,h.nodes.get('dailyReportPreview').src);
   assert.equal(h.nodes.get('dailyReportDownload').download,'学习日报_2026-08-27.png');
+});
+
+test('049 layout selector applies, persists, restores and resets three columns', () => {
+  const h=harness();h.nodes.get('layoutMode').value='columns';h.nodes.get('layoutMode').emit('change');
+  assert.equal(h.run('dom.mainLayout.classList.contains("three-columns")'),true);
+  const fresh=harness(h.storage);assert.equal(fresh.nodes.get('layoutMode').value,'columns');
+  fresh.run('resetLayout()');assert.equal(fresh.run('dom.mainLayout.classList.contains("three-columns")'),false);
+  assert.doesNotMatch(html,/>FOCUS<|>REVIEW<|每日复习清单/);
+});
+
+test('050 swapped immersion survives reload without changing saved note fields', () => {
+  const h=harness();h.run("startFocus(state.categories[0].id);state.focus.immersiveFields.notes='保留笔记';");h.click('immersionSwapBtn');
+  assert.equal(h.run('dom.immersionContent.classList.contains("swapped")'),true);
+  const fresh=harness(h.storage);fresh.run('enterImmersion()');assert.equal(fresh.run('dom.immersionContent.classList.contains("swapped")'),true);
+  assert.equal(fresh.run('state.focus.immersiveFields.notes'),'保留笔记');
+  fresh.advance(60000);fresh.run('renderFocus()');assert.match(fresh.nodes.get('immersionTotal').textContent,/00:01:00/);
+});
+
+test('051 video defaults only for a fresh learning task, existing action and review semantics survive', () => {
+  const h=harness();h.run('startFocus(state.categories[0].id)');assert.equal(h.nodes.get('immersionActionType').value,'video');
+  h.nodes.get('immersionActionType').value='practice';h.nodes.get('immersionActionType').emit('change');h.advance(10000);h.run('pauseFocus();resumeFocusTask(state.focusTasks[0].id)');
+  assert.equal(h.nodes.get('immersionActionType').value,'practice');
+  const fresh=harness(h.storage);assert.equal(fresh.run('state.focus.immersiveFields.actionType'),'practice');
+  assert.deepEqual([...html.match(/id="immersionActionType">([\s\S]*?)<\/select>/)[1].matchAll(/value="([^"]+)"/g)].map(m=>m[1]),['video','practice','memorize','reading','review']);
+  const review=harness();review.run("dom.focusTaskType.value='review';startFocus(state.categories[0].id)");assert.equal(review.nodes.get('immersionActionType').value,'review');
+});
+
+test('052 PiP requests compact size, renders exactly three rows and its pause saves the task', async () => {
+  const h=harness();h.run(`var pipNodes=new Map(['pipClock','pipSubject','pipBack','pipPause','pipStop'].map(id=>[id,{}]));
+    var pip={closed:false,document:{head:{},body:{},getElementById:id=>pipNodes.get(id)},close(){this.closed=true;},focus(){},addEventListener(){}};
+    window.documentPictureInPicture={requestWindow:async options=>{window.requestedPip=options;return pip;}};
+    startFocus(state.categories[0].id);state.focus.categoryName='数学 / 高数 / 积分';`);
+  await h.run('openFocusPictureInPicture()');
+  assert.deepEqual(h.json('window.requestedPip'),{width:200,height:150,disallowReturnToOpener:true,preferInitialWindowPlacement:true});
+  assert.equal(h.run("pipNodes.get('pipSubject').textContent"),'数学 / 高数');
+  assert.doesNotMatch(h.run('pip.document.body.innerHTML'),/pipMode/);
+  assert.equal((h.run('pip.document.body.innerHTML').match(/title=/g)||[]).length,3);
+  h.advance(20000);h.run("pipNodes.get('pipPause').onclick()");assert.equal(h.run('pip.closed'),true);assert.equal(h.run('state.focusTasks[0].totalSeconds'),20);
+});
+
+test('052 unsupported or rejected PiP leaves the active timer usable', async () => {
+  const h=harness();h.run('startFocus(state.categories[0].id)');assert.equal(h.nodes.get('immersionPipBtn').hidden,true);
+  h.run("window.documentPictureInPicture={requestWindow:async()=>{throw Error('unavailable');}}");await h.run('openFocusPictureInPicture()');
+  assert.ok(h.run('state.focus'));assert.match(h.alerts.at(-1),/小窗打开失败/);assert.equal(h.run('dom.immersionOverlay.classList.contains("hidden")'),false);
+});
+
+test('053 month headings omit zero durations, use ten heat levels and keep task text readable', () => {
+  const h=harness();assert.deepEqual(h.json('[0,1,3599,3600,7200,32400,35999,36000,72000].map(calendarHeatLevel)'),[0,1,1,1,2,9,9,10,10]);
+  assert.equal(h.run('new Set(Array.from({length:10},(_,i)=>calendarHeatColor((i+1)*3600))).size'),10);
+  h.run("state.events=[{id:'month',date:currentDateKey(),halfZone:'record',focusSeconds:36000,eventName:'深色任务',categoryId:state.categories[0].id}];renderCalendar()");
+  const markup=h.nodes.get('monthCalendar').innerHTML;assert.match(markup,/calendar-day-heading[\s\S]*data-heat-level="10"/);assert.equal((markup.match(/calendar-day-duration/g)||[]).length,1);
+  assert.match(fs.readFileSync(path.join(root,'styles.css'),'utf8'),/\.calendar-event, \.calendar-event-label \{ color: #333;/);
+});
+
+test('054 stacked focus expands intrinsically and paused tasks are not truncated from markup', () => {
+  const h=harness();for(let i=0;i<5;i++){h.run('startFocus(state.categories[0].id)');h.advance(10000);h.run('pauseFocus()');}
+  assert.equal((h.nodes.get('unfinishedTaskList').innerHTML.match(/data-task-resume=/g)||[]).length,5);
+  const css=fs.readFileSync(path.join(root,'styles.css'),'utf8');assert.match(css,/grid-template-rows: max-content 4px minmax\(160px, 1fr\)/);assert.match(css,/grid-template-rows: max-content minmax\(130px,1fr\)/);
+});
+
+test('055 statistics always open on today and selected range drives totals', () => {
+  const h=harness();h.run("state.events=[{id:'now',date:dateKey(new Date()),halfZone:'record',categoryId:state.categories[0].id,focusSeconds:3600},{id:'old',date:'2026-08-26',halfZone:'record',categoryId:state.categories[0].id,focusSeconds:7200}];dom.statsRange.value='month';openStats()");
+  assert.equal(h.nodes.get('statsRange').value,'day');assert.equal(h.nodes.get('statTotalTime').textContent,'1h 0m');
+  h.nodes.get('statsRange').value='month';h.nodes.get('statsRange').emit('change');assert.equal(h.nodes.get('statTotalTime').textContent,'3h 0m');
+  h.run('closeModal("statsModal");openStats()');assert.equal(h.nodes.get('statsRange').value,'day');
+});
+
+test('055 learning/review totals, percentages and tooltip agree and exclude plans', () => {
+  const h=harness();h.run("state.events=[{id:'learn',date:dateKey(new Date()),halfZone:'record',taskType:'learn',categoryId:state.categories[0].id,focusSeconds:2700},{id:'review',date:dateKey(new Date()),halfZone:'record',taskType:'review',categoryId:state.categories[0].id,focusSeconds:900},{id:'plan',date:dateKey(new Date()),halfZone:'plan',taskType:'learn',categoryId:state.categories[0].id,focusSeconds:7200}];openStats()");
+  assert.deepEqual(h.json('learningReviewTotals(focusEvents())'),{learn:2700,review:900});
+  assert.match(h.nodes.get('statTodaySplit').innerHTML,/学习 <b>45m<\/b> · 75%/);assert.match(h.nodes.get('statTodaySplit').innerHTML,/复习 <b>15m<\/b> · 25%/);
+  assert.match(h.nodes.get('distributionDetails').innerHTML,/学习 45m，复习 15m/);assert.match(h.nodes.get('distributionDetails').innerHTML,/distribution-review/);
+  h.run("state.events=[];renderStats()");assert.doesNotMatch(h.nodes.get('statTodaySplit').innerHTML,/NaN|Infinity/);assert.equal((h.nodes.get('statTodaySplit').innerHTML.match(/0%/g)||[]).length,2);
+});
+
+test('055 each monthly/day chart point is labelled with an actual duration, including zero', () => {
+  const h=harness();h.drawCalls.length=0;h.run("drawMonthlyChart([{date:'2026-08-27',focusSeconds:5400}])");
+  assert.equal(h.drawCalls.filter(call=>call.text==='1h 30m').length,1);assert.equal(h.drawCalls.filter(call=>call.text==='0m').length,30);
+  h.drawCalls.length=0;h.run("drawYearlyChart([{date:'2026-08-27',focusSeconds:7200}])");assert.equal(h.drawCalls.filter(call=>call.text==='2h 0m').length,1);assert.equal(h.drawCalls.filter(call=>call.text==='0m').length,11);
+  assert.ok(parseInt(h.nodes.get('monthlyChart').style.minWidth)>1000);
+});
+
+function seedStatsHierarchy(h){h.run("state.categories=[{id:'root',name:'数学',color:'#336644',children:[{id:'a',name:'高数',children:[{id:'a1',name:'积分'}]},{id:'b',name:'线代'}]},{id:'other',name:'英语',children:[]}];state.statsSubjects=new Set();");}
+test('056 selecting and clearing a root cascades to every descendant while retaining other roots', () => {
+  const h=harness();seedStatsHierarchy(h);h.run("setStatsSubjectSelected('root',true);setStatsSubjectSelected('other',true)");assert.deepEqual(h.json('[...state.statsSubjects].sort()'),['a','a1','b','other','root']);
+  h.run("setStatsSubjectSelected('root',false)");assert.deepEqual(h.json('[...state.statsSubjects]'),['other']);
+});
+
+test('056 deselecting a child makes ancestors partial without matching the excluded child via root', () => {
+  const h=harness();seedStatsHierarchy(h);h.run("setStatsSubjectSelected('root',true);setStatsSubjectSelected('a1',false)");
+  assert.deepEqual(h.json('[...state.statsSubjects]'),['b']);assert.deepEqual(h.json('statsSubjectSelection(state.categories[0])'),{checked:false,partial:true});
+  h.run("state.events=[{date:dateKey(new Date()),halfZone:'record',categoryId:'root',subjectPath:['root','a','a1'],focusSeconds:7200},{date:dateKey(new Date()),halfZone:'record',categoryId:'root',subjectPath:['root','b'],focusSeconds:600}];dom.statsRange.value='day';renderStats()");
+  assert.equal(h.nodes.get('statTotalTime').textContent,'10m');h.run("setStatsSubjectSelected('a1',true)");assert.equal(h.run('statsSubjectSelection(state.categories[0]).checked'),true);
+});
+
+test('056 hierarchy expansion does not alter selection and children are nested under their parent', () => {
+  const h=harness();seedStatsHierarchy(h);h.run("setStatsSubjectSelected('root',true);renderStatsFilters()");assert.match(h.nodes.get('statsSubjectFilters').innerHTML,/stats-subject-children hidden/);
+  const selection=h.json('[...state.statsSubjects]');h.run("state.statsExpanded.add('root');renderStatsFilters()");assert.deepEqual(h.json('[...state.statsSubjects]'),selection);assert.match(h.nodes.get('statsSubjectFilters').innerHTML,/data-stats-expand="root" aria-expanded="true"/);
+});
+
+test('057 report doubles pixel dimensions and draws fully opaque dark text without altering timeline appearance', () => {
+  const h=harness();h.run("state.events=[{id:'text',date:currentDateKey(),halfZone:'record',startSlot:600,endSlot:630,eventName:'清晰文字',textOpacity:.1}]");h.drawCalls.length=0;h.transforms.length=0;h.run('exportImage()');
+  const output=h.createdNodes.find(node=>node.tagName==='CANVAS');assert.equal(output.width,2800);assert.equal(output.height,h.run('(createLayout(1400,54,360).height+24)*2'));
+  assert.deepEqual(h.transforms[0],[2,0,0,2,0,0]);const glyphs=h.drawCalls.filter(call=>['清','晰','文','字'].includes(call.text));assert.equal(glyphs.map(call=>call.text).join(''),'清晰文字');assert.ok(glyphs.every(call=>call.globalAlpha===1&&call.fillStyle==='#333'));
+  assert.equal(h.run('state.events[0].textOpacity'),.1);
+});
+
+test('058 review groups retain collapse state across filter changes and escape subject text', () => {
+  const h=harness();seedReviewSource(h);h.run("state.categories[0].name='<数学>';state.reviews[0].reviewDate=currentDateKey();state.reviewGroupOpen.set(state.categories[0].id,false);renderReviews()");
+  const markup=h.nodes.get('reviewList').innerHTML;assert.match(markup,/&lt;数学&gt;/);assert.doesNotMatch(markup.split('</details>')[0],/<details[^>]*\sopen/);
+  h.run("setReviewFilter('all');setReviewFilter('today')");assert.doesNotMatch(h.nodes.get('reviewList').innerHTML.split('</details>')[0],/<details[^>]*\sopen/);
+});
+
+test('059 today completed group uses completion date, is last/default collapsed, and restore returns to pending', () => {
+  const h=harness();seedReviewSource(h);h.run("state.reviews[0].reviewDate='2026-09-01';toggleReview(state.reviews[0].id);renderReviews()");
+  const markup=h.nodes.get('reviewList').innerHTML;assert.match(markup,/data-review-group="completed:2026-08-27"/);assert.doesNotMatch(markup,/<details[^>]*\sopen/);assert.match(markup,/review-item done/);assert.match(markup,/>恢复<\/button>/);
+  h.run('toggleReview(state.reviews[0].id)');assert.equal(h.run('state.reviews[0].completed'),false);assert.equal(h.run('state.reviews[0].reviewDate'), '2026-08-27');
+  assert.equal(h.run('filteredReviews().length'),1);assert.match(h.nodes.get('reviewList').innerHTML,/data-review-group="completed:2026-08-27"[^>]*>[\s\S]*0 项/);
+});
+
+test('059 historical completion stays out of today and a counted review is not duplicated', () => {
+  const h=harness();seedReviewSource(h);h.run("state.reviews[0].completed=true;state.reviews[0].completedAt='2026-08-26T10:00:00';state.reviews[0].reviewDate=currentDateKey();renderReviews()");assert.equal(h.run('filteredReviews().length'),0);
+  h.run("state.reviews[0].completedAt='2026-08-27T10:00:00';renderReviews()");assert.equal((h.nodes.get('reviewList').innerHTML.match(/data-review-complete=/g)||[]).length,1);
+});
+
+test('recheck: manual pause and stop after countdown expiry cap the final segment at its deadline', () => {
+  for(const action of ['pauseFocus()', 'finishFocus(false)']){
+    const h=harness(new Map(),'2026-08-27T23:59:30');h.run("dom.focusTimerType.value='countdown';dom.focusDuration.value='1';startFocus(state.categories[0].id)");h.advance(10000);h.run('pauseFocus()');h.advance(600000);h.run('resumeFocusTask(state.focusTasks[0].id)');h.advance(300000);h.run(action);
+    assert.equal(h.run('state.focusTasks[0].totalSeconds'),60);assert.equal(h.run('state.events.reduce((sum,e)=>sum+e.focusSeconds,0)'),60);assert.equal(h.run('state.events.at(-1).focusSeconds'),50);
+  }
+});
+
+test('recheck: unchanged paused-task controls survive timer ticks instead of losing DOM focus', () => {
+  const h=harness();h.run('startFocus(state.categories[0].id)');h.advance(1000);h.run('pauseFocus();startFocus(state.categories[1].id)');
+  let writes=0;const list=h.nodes.get('unfinishedTaskList'),descriptor=Object.getOwnPropertyDescriptor(list,'innerHTML');Object.defineProperty(list,'innerHTML',{get:descriptor.get,set(value){writes++;descriptor.set.call(this,value);}});
+  h.advance(1000);h.run('tickFocus();tickFocus()');assert.equal(writes,0);
+  h.run("state.focusTasks[0].fields.eventName='更新标题';renderUnfinishedTasks()");assert.equal(writes,1);assert.match(list.innerHTML,/更新标题/);
+});
+
+test('recheck: a late PiP response cannot attach to a paused or replaced focus session', async () => {
+  const h=harness();h.run("var resolvePip;var latePip={closed:false,close(){this.closed=true;}};window.documentPictureInPicture={requestWindow:()=>new Promise(resolve=>resolvePip=resolve)};startFocus(state.categories[0].id)");
+  const pending=h.run('openFocusPictureInPicture()');h.run('pauseFocus();startFocus(state.categories[1].id);resolvePip(latePip)');await pending;
+  assert.equal(h.run('latePip.closed'),true);assert.equal(h.run('state.pipWindow'),null);assert.ok(h.run('state.focus'));assert.equal(h.run('dom.immersionOverlay.classList.contains("hidden")'),false);
+});
+
+test('recheck: clear events closes an already-open focus window', () => {
+  const h=harness();h.run("startFocus(state.categories[0].id);pauseFocus();startFocus(state.categories[1].id);var oldPip={closed:false,close(){this.closed=true;}};state.pipWindow=oldPip;clearEvents()");assert.equal(h.run('oldPip.closed'),true);assert.equal(h.run('state.pipWindow'),null);
+});
+
+test('recheck: chart backing dimensions refresh when a visible statistics dialog is resized', () => {
+  const h=harness();h.run('openStats()');h.nodes.get('distributionChart').getBoundingClientRect=()=>({width:520,height:220});h.emitWindow('resize');assert.equal(h.nodes.get('distributionChart').width,520);
+  h.nodes.get('distributionChart').getBoundingClientRect=()=>({width:280,height:220});h.emitWindow('resize');assert.equal(h.nodes.get('distributionChart').width,280);
+});
+
+test('recheck: three-column resizing changes its column width without corrupting stacked preference', () => {
+  const h=harness();h.run("state.settings.layoutMode='columns';state.layoutEditing=true;window.matchMedia=()=>({matches:true});dom.focusCard.getBoundingClientRect=()=>({width:300});var side={getBoundingClientRect:()=>({top:0})};document.querySelector=selector=>selector==='.side-panel'?side:null;beginLayoutResize({preventDefault(){},currentTarget:dom.sideResizeHandle,clientX:500},'side')");
+  h.emitWindow('pointermove',{clientX:450,clientY:100});h.emitWindow('pointerup');assert.equal(h.run('state.settings.focusColumnWidth'),350);assert.equal(h.run('state.settings.sideWidth'),330);assert.equal(harness(h.storage).run('state.settings.focusColumnWidth'),350);
+});
+
+test('recheck: deleted-subject history stays in default statistics and can be filtered explicitly', () => {
+  const h=harness();h.run("state.events=[{id:'deleted',categoryId:'gone',categoryName:'旧学科',subjectPath:['gone','old-child'],date:dateKey(new Date()),halfZone:'record',focusSeconds:3600},{id:'known',categoryId:state.categories[0].id,date:dateKey(new Date()),halfZone:'record',focusSeconds:1800}];openStats()");
+  assert.equal(h.nodes.get('statTotalTime').textContent,'1h 30m');assert.match(h.nodes.get('statsSubjectFilters').innerHTML,/未分类 \/ 已删除学科/);
+  h.run('setStatsSubjectSelected(ORPHAN_STATS_ID,false);renderStats()');assert.equal(h.nodes.get('statTotalTime').textContent,'30m');assert.equal(h.run('state.events.length'),2);
+});
+
+test('060 merges independent learning events into one completed task and regenerates one review schedule', () => {
+  const h=harness();h.run(`state.events=[
+    {id:'later',date:'2026-08-29',halfZone:'record',taskType:'learn',categoryId:state.categories[0].id,categoryName:'数学',subjectPath:[state.categories[0].id],eventName:'第二段',materialLocation:'P11-P20',textContent:'摘要二',notes:'笔记二',actionTypes:['reading'],startSlot:600,endSlot:620},
+    {id:'first',date:'2026-08-28',halfZone:'record',taskType:'learn',categoryId:state.categories[0].id,categoryName:'数学',subjectPath:[state.categories[0].id],eventName:'第一段',materialLocation:'P1-P10',textContent:'摘要一',notes:'笔记一',actionTypes:['video','practice'],startSlot:540,endSlot:570}
+  ];generateReviews(state.events[0]);generateReviews(state.events[1]);state.mergeSelection=new Set(['later','first']);mergeSelectedEvents('统一章节')`);
+  assert.equal(h.run('state.focusTasks.length'),1);assert.equal(h.run('state.focusTasks[0].status'),'completed');assert.equal(h.run('state.focusTasks[0].totalSeconds'),3000);
+  assert.equal(h.run("state.events.every(event=>event.focusTaskId===state.focusTasks[0].id&&event.eventName==='统一章节')"),true);
+  assert.equal(h.run("state.events[0].materialLocation"),'P1-P10；P11-P20');assert.equal(h.run('state.reviews.length'),5);
+  assert.deepEqual(h.json('state.events[0].actionTypes'),['video','practice','reading']);
+  assert.equal(h.run('new Set(state.reviews.map(review=>review.sourceEventId)).size'),1);assert.equal(h.run('state.reviews[0].sourceEventId'),'first');assert.equal(h.run('state.reviews[0].reviewDate'),'2026-08-30');
+  h.run('undo()');assert.equal(h.run('state.focusTasks.length'),0);assert.equal(h.run('state.reviews.length'),10);assert.deepEqual(h.json("state.events.find(event=>event.id==='first').actionTypes"),['video','practice']);assert.equal(h.run('state.mergeMode'),false);assert.equal(h.run('state.mergeSelection.size'),0);
+  h.run('redo()');assert.equal(h.run('state.focusTasks.length'),1);assert.equal(h.run('state.reviews.length'),5);assert.deepEqual(h.json('state.events[0].actionTypes'),['video','practice','reading']);
+});
+
+test('060 refuses a partial merge of an existing multi-segment task', () => {
+  const h=harness();h.run("startFocus(state.categories[0].id)");h.advance(60000);h.run('pauseFocus();resumeFocusTask(state.focusTasks[0].id)');h.advance(60000);h.run("pauseFocus();state.events.push({id:'manual',date:currentDateKey(),halfZone:'record',taskType:'learn',categoryId:state.categories[0].id,categoryName:'数学',subjectPath:[state.categories[0].id],eventName:'独立',startSlot:700,endSlot:710});state.mergeSelection=new Set([state.events[0].id,'manual'])");
+  assert.equal(h.run("mergeSelectedEvents('不应合并')"),false);assert.equal(h.run('state.focusTasks.length'),1);assert.equal(h.run('state.events[0].focusTaskId===state.events[1].focusTaskId'),true);assert.match(h.alerts.at(-1),/全部时段/);
+});
+
+test('061 completed event can return to unfinished without losing content and can complete again', () => {
+  const h=harness();h.run("state.events=[{id:'source',date:currentDateKey(),halfZone:'record',taskType:'learn',categoryId:state.categories[0].id,categoryName:'数学',subjectPath:[state.categories[0].id],eventName:'误完成章节',materialLocation:'P3',textContent:'保留摘要',notes:'保留笔记',leftover:'保留遗留',actionTypes:['video','practice'],startSlot:480,endSlot:510}];generateReviews(state.events[0]);reopenCompletedEvent('source')");
+  assert.equal(h.run('state.reviews.length'),0);assert.equal(h.run('state.focusTasks[0].status'),'paused');assert.equal(h.run("state.events[0].eventName+'|'+state.events[0].materialLocation+'|'+state.events[0].textContent+'|'+state.events[0].notes+'|'+state.events[0].leftover"),'误完成章节|P3|保留摘要|保留笔记|保留遗留');
+  assert.deepEqual(h.json('state.events[0].actionTypes'),['video','practice']);h.run('resumeFocusTask(state.focusTasks[0].id)');h.advance(1000);h.run('pauseFocus()');assert.deepEqual(h.json('state.events[0].actionTypes'),['video','practice']);
+  h.run('completeFocusTask(state.focusTasks[0])');assert.equal(h.run('state.focusTasks[0].status'),'completed');assert.equal(h.run('state.reviews.length'),5);
+});
+
+test('061 manual learning records without review schedules still expose completion rollback', () => {
+  const h=harness();h.run("state.categories[0].reviewEnabled=false;state.events=[{id:'manual',date:currentDateKey(),halfZone:'record',taskType:'learn',categoryId:state.categories[0].id,categoryName:'数学',subjectPath:[state.categories[0].id],eventName:'无复习事件',startSlot:480,endSlot:490}];openEventDetail('manual')");
+  assert.equal(h.nodes.get('eventDetailReopenBtn').classList.contains('hidden'),false);assert.equal(h.run("reopenCompletedEvent('manual')"),true);assert.equal(h.run('state.focusTasks[0].status'),'paused');assert.equal(h.run('state.reviews.length'),0);
+});
+
+test('062 event detail has one identity block, ordered fields, total duration and whole-second times', () => {
+  const h=harness();h.run("state.events=[{id:'detail',date:currentDateKey(),halfZone:'record',taskType:'learn',categoryId:state.categories[0].id,categoryName:'数学',subjectPath:[state.categories[0].id],eventName:'唯一标题',materialLocation:'唯一资料',textContent:'摘要',notes:'笔记',leftover:'遗留',mastery:'partial',startSlot:480.01,endSlot:510.02}];generateReviews(state.events[0]);openEventDetail('detail')");const detail=h.nodes.get('eventDetailBody').innerHTML;
+  assert.equal((detail.match(/唯一标题/g)||[]).length,1);assert.equal((detail.match(/唯一资料/g)||[]).length,1);
+  assert.ok(detail.indexOf('唯一标题')<detail.indexOf('学习摘要与掌握程度'));assert.ok(detail.indexOf('学习摘要与掌握程度')<detail.indexOf('学习笔记'));assert.ok(detail.indexOf('学习笔记')<detail.indexOf('遗留内容'));assert.ok(detail.indexOf('遗留内容')<detail.indexOf('总时长'));assert.ok(detail.indexOf('总时长')<detail.indexOf('复习排期'));
+  assert.match(detail,/08:00:01–08:30:01/);assert.match(detail,/总时长 00:30:01/);assert.doesNotMatch(detail,/08:00:00\.6|08:30:01\.2/);
+});
+
+test('062 subsecond durations round to the nearest displayed second', () => {
+  const h=harness();h.run("state.events=[{id:'tiny',date:currentDateKey(),halfZone:'record',taskType:'learn',categoryId:state.categories[0].id,categoryName:'数学',subjectPath:[state.categories[0].id],eventName:'极短记录',startSlot:480,endSlot:480.01,focusSeconds:.6}];openEventDetail('tiny')");
+  assert.match(h.nodes.get('eventDetailBody').innerHTML,/总时长 00:00:01/);assert.match(h.nodes.get('eventDetailBody').innerHTML,/· 00:00:01/);
+});
+
+test('064 context menu flips above near the viewport bottom and clamps its right edge', () => {
+  const h=harness();h.nodes.get('contextMenu').getBoundingClientRect=()=>({width:145,height:140});
+  assert.deepEqual(h.json("(()=>{window.innerWidth=500;window.innerHeight=600;return positionContextMenu(480,590)})()"),{left:347,top:442});
+  assert.deepEqual(h.json('positionContextMenu(20,20)'),{left:20,top:28});
+});
+
+test('recheck: Escape, restore and render clear stale merge selections', () => {
+  const h=harness();h.run("state.events=[{id:'a',date:currentDateKey(),halfZone:'record',taskType:'learn',categoryId:state.categories[0].id,startSlot:0,endSlot:1}];state.mergeMode=true;state.mergeSelection=new Set(['a','missing']);renderMergeBar()");assert.equal(h.run('state.mergeSelection.size'),1);
+  h.emitWindow('keydown',{key:'Escape'});assert.equal(h.run('state.mergeMode'),false);assert.equal(h.run('state.mergeSelection.size'),0);
+  h.run("pushHistory();state.events=[];state.mergeMode=true;state.mergeSelection=new Set(['a']);undo()");assert.equal(h.run('state.mergeMode'),false);assert.equal(h.run('state.mergeSelection.size'),0);assert.equal(h.run('state.events.length'),1);
+});
+
+test('recheck: tooltip placement uses its measured size and stays in a small viewport', () => {
+  const h=harness();h.nodes.get('timelineTooltip').getBoundingClientRect=()=>({width:200,height:100});
+  assert.deepEqual(h.json("(()=>{window.innerWidth=300;window.innerHeight=200;return showTimelineTooltip(290,190,'完整内容')})()"),{left:92,top:78});
+  assert.match(fs.readFileSync(path.join(root,'styles.css'),'utf8'),/\.context-menu \{[^}]*max-height: calc\(100vh - 16px\);[^}]*overflow-y: auto/);
+});
+
+function serviceWorkerHarness(){
+  const listeners={},removed=[],writes=[],stored=new Map(),background=[];
+  const shell={kind:'shell'},error={kind:'network-error'};stored.set('./index.html',shell);
+  const cache={match:async request=>stored.get(typeof request==='string'?request:request.url),put:async(request,response)=>writes.push([request,response]),addAll:async()=>{}};
+  const context=vm.createContext({URL,Response:{error:()=>error},self:{location:{origin:'http://localhost',href:'http://localhost/sw.js'},addEventListener:(name,handler)=>listeners[name]=handler,clients:{claim(){}},skipWaiting(){}},caches:{keys:async()=>['other-app-cache','learning-journal-v1',vm.runInContext('CACHE_NAME',context)],delete:async key=>removed.push(key),open:async()=>cache},fetch:async()=>{throw Error('offline');}});
+  vm.runInContext(fs.readFileSync(path.join(root,'sw.js'),'utf8'),context);
+  return{listeners,removed,writes,stored,shell,error,context,background,async fetch(path,mode='cors'){let result;listeners.fetch({request:{url:'http://localhost/'+path,method:'GET',mode},respondWith:value=>result=value,waitUntil:value=>background.push(value)});const response=await result;await Promise.all(background);return response;}};
+}
+
+test('recheck: service worker activation only retires learning-journal caches', async () => {
+  const h=serviceWorkerHarness();let complete;h.listeners.activate({waitUntil:value=>complete=value});await complete;assert.deepEqual(h.removed,['learning-journal-v1']);
+});
+
+test('recheck: offline navigation gets the app shell but a missing script does not get HTML', async () => {
+  const h=serviceWorkerHarness();assert.equal(await h.fetch('missing.js'),h.error);assert.equal(await h.fetch('','navigate'),h.shell);
+});
+
+test('recheck: HTTP errors cannot poison the offline cache and successful shell updates are awaited', async () => {
+  const h=serviceWorkerHarness();vm.runInContext("fetch=async()=>({ok:false,clone(){return this;}})",h.context);await h.fetch('index.html');assert.equal(h.writes.length,0);
+  vm.runInContext("fetch=async()=>({ok:true,clone(){return this;}})",h.context);await h.fetch('index.html');assert.equal(h.writes.length,1);assert.equal(h.background.length,1);
+});
+
+test('recheck: concurrent PiP opens request one window and setup failures release it', async () => {
+  const h=harness();h.run("var requests=0,resolvePip;window.documentPictureInPicture={requestWindow:()=>{requests++;return new Promise(resolve=>resolvePip=resolve)}};startFocus(state.categories[0].id)");const pending=h.run('openFocusPictureInPicture()');await h.run('openFocusPictureInPicture()');assert.equal(h.run('requests'),1);
+  h.run('var badPip={closed:false,close(){this.closed=true;}};resolvePip(badPip)');await pending;assert.equal(h.run('badPip.closed'),true);assert.equal(h.run('state.pipWindow'),null);assert.equal(h.run('state.pipRequest'),null);assert.ok(h.run('state.focus'));
 });

@@ -1,7 +1,7 @@
 const STORAGE_KEY = 'learning_tool_backup';
 const ACTIVE_FOCUS_KEY = 'learning_tool_active_focus';
 const DATA_VERSION = 10;
-const ACTION_TYPE_LABELS = { video: '视频', reading: '阅读', practice: '习题', memorize: '背诵', review: '复习' };
+const ACTION_TYPE_LABELS = { video: '视频', practice: '习题', memorize: '背诵', reading: '阅读', review: '复习' };
 const ACTION_TYPE_ICONS = { video: '▶', reading: '▤', practice: '✎', memorize: '◆', review: '↻' };
 const MASTERY_LABELS = { unknown: '尚未判断', weak: '薄弱', partial: '部分掌握', mastered: '已掌握' };
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
@@ -37,7 +37,7 @@ const defaultSettings = {
   planRatio: .5, defaultSelectionZone: 'record', showDots: true, dotSize: 1.7, dotOpacity: .2,
   eventPlacement: 'bottom', dividerDrag: true, defaultPlanColor: '#d09a55', defaultRecordColor: '#4f8aa8',
   defaultEventOpacity: .86, defaultTextSize: 13, defaultTextColor: '#20231f', defaultTextOpacity: .92,
-  shortcut: 'Ctrl+Enter', sideWidth: 330, dateHeight: 62, focusHeight: 285,
+  shortcut: 'Ctrl+Enter', sideWidth: 330, dateHeight: 62, focusHeight: 180, focusColumnWidth: 320, layoutMode: 'stacked', immersionSwapped: false,
   immersionTheme: 'plain', immersionOpacity: .72, showCountdown: false, countdownName: '距离考试',
   countdownDate: '', showQuote: true
   , arrowWidth: 1.75, arrowSize: 6, compactToolbar: false,
@@ -55,15 +55,15 @@ const state = {
   layoutEditing: false, dividerDragging: false, focus: null, pendingFocus: null, focusTicker: null,
   pendingPlanReminderId: null, planReminderTicker: null, reviewDayKey: null,
   calendarMonth: startOfMonth(new Date()), selectedSubjectId: null, statsSubjects: new Set(),
-  selectedDetailEventId: null,
-  installPrompt: null, canvasClickTimer: null, audioContext: null, pipWindow: null,
+  selectedDetailEventId: null, reviewGroupOpen: new Map(), statsExpanded: new Set(), mergeMode: false, mergeSelection: new Set(),
+  installPrompt: null, canvasClickTimer: null, audioContext: null, pipWindow: null, pipRequest: null, unfinishedMarkup: null,
   statVisibility: { summary: true, today: true, distribution: true, monthly: true, yearly: true }
 };
 
 const dom = {};
 [
   'mainLayout','timelineScroll','timelineCanvas','currentDateLabel','reviewBadge','currentDateButton','reviewList','reviewListSummary','reviewCard','reviewFullscreenBtn',
-  'toolbarMenuBtn','toolbarMenu','layoutEditBar','addEventBtn','editLayoutBtn','finishLayoutBtn','resetLayoutBtn',
+  'toolbarMenuBtn','toolbarMenu','layoutEditBar','layoutMode','addEventBtn','mergeEventsBtn','eventMergeBar','eventMergeCount','eventMergeName','confirmEventMergeBtn','cancelEventMergeBtn','editLayoutBtn','finishLayoutBtn','resetLayoutBtn',
   'sideResizeHandle','focusReviewHandle','contextMenu','importInput','eventModal','settingsModal','calendarModal',
   'statsModal','subjectsModal','planReminderModal','reviewDetailModal','focusDetailModal','eventDetailModal','leftoverModal','planReminderSubject','planReminderTime',
   'planReminderTitle','planReminderActions','planReminderLocation','planReminderIgnoreBtn','planReminderSnoozeBtn','planReminderStartBtn',
@@ -77,13 +77,13 @@ const dom = {};
   'settingHiddenHours','settingReviewPreset','settingReviewIntervals','settingReviewArrowWidth','settingReviewArrowSize','settingReviewArrowDash',
   'settingShortcut','settingCountdownName','settingCountdownDate','settingImmersionTheme','settingImmersionOpacity','settingCountdownSize','settingCountdownPosition','settingImmersionBackground','settingLocalBackground','localBackgroundStatus',
   'settingShowCountdown','settingShowQuote','settingSoundType','settingSoundDuration','settingSoundVolume','settingSoundEnabled','settingNotificationsEnabled','monthCalendar','calendarTitle','statsSubjectFilters','statsRange','statsCustomRange','statsCustomFrom','statsCustomTo','statsChartType',
-  'statTotalCount','statTotalTime','statDailyAverage','statTodayCount','statTodayTime','distributionChart',
+  'statTotalCount','statTotalTime','statDailyAverage','statTodayCount','statTodayTime','statTodaySplit','distributionChart','distributionDetails',
   'monthlyChart','yearlyChart','subjectsList','subjectDetail','focusCard','focusCollapseBtn','focusBody','focusSubjects','focusTaskType','focusTimerType','focusDurationWrap',
   'focusDuration','focusCustomDurationWrap','focusCustomDuration','focusClock','focusSubjectLabel','focusLiveNote','focusStatus',
   'stopFocusBtn','pauseFocusBtn','unfinishedTaskPanel','unfinishedTaskList','focusResultName','focusResultSummary','focusResultLeftover','focusCompletionStatus','enterImmersionBtn','focusDetailTitle','focusSummary','focusStartLabel','focusEndLabel','focusDetailLabel',
   'focusStartPoint','focusEndPoint','focusResultMastery','focusDetailText','immersionOverlay','immersionBackdrop','immersionContent',
-  'immersionMode','immersionClock','immersionSubject','immersionReviewCard','immersionInputCard','immersionLiveNote','immersionMaterialLocation','immersionEventName','immersionSummary','immersionLeftover','immersionActionType','immersionMastery','immersionCountdown','immersionQuote','immersionPipBtn',
-  'eventDetailTitle','eventDetailBody','eventDetailEditBtn','eventDetailStartBtn','leftoverList','installAppBtn','reloadConfigBtn','reloadConfigFeedback','compactTimelinePresetBtn',
+  'immersionMode','immersionClock','immersionSubject','immersionTotal','immersionSwapBtn','immersionReviewCard','immersionInputCard','immersionLiveNote','immersionMaterialLocation','immersionEventName','immersionSummary','immersionLeftover','immersionActionType','immersionMastery','immersionCountdown','immersionQuote','immersionPipBtn',
+  'eventDetailTitle','eventDetailBody','eventDetailEditBtn','eventDetailReopenBtn','eventDetailStartBtn','timelineTooltip','leftoverList','installAppBtn','reloadConfigBtn','reloadConfigFeedback','compactTimelinePresetBtn',
   'inputDialogModal','inputDialogForm','inputDialogTitle','inputDialogLabel','inputDialogDescription','inputDialogValue','inputDialogEarlierWrap','inputDialogEarlier','inputDialogError','dailyReportPreview','dailyReportDownload'
 ].forEach((id) => { dom[id] = document.getElementById(id); });
 
@@ -102,6 +102,8 @@ renderAll();
 if(state.focus){state.focusTicker=setInterval(tickFocus,250);handleAppResume();}
 
 function bindEvents() {
+  dom.layoutMode.addEventListener('change',()=>{state.settings.layoutMode=dom.layoutMode.value==='columns'?'columns':'stacked';applyLayoutSettings();saveBackup();renderTimeline();});
+  dom.immersionSwapBtn.addEventListener('click',()=>{state.settings.immersionSwapped=!state.settings.immersionSwapped;applyImmersionSettings();saveBackup();});
   dom.toolbarMenuBtn.addEventListener('click', (event) => {
     event.stopPropagation();
     const open = dom.toolbarMenu.classList.toggle('hidden') === false;
@@ -130,6 +132,9 @@ function bindEvents() {
   dom.settingLocalBackground.addEventListener('change', importImmersionBackground);
   dom.installAppBtn.addEventListener('click', installApp);
   dom.addEventBtn.addEventListener('click', toggleSelection);
+  dom.mergeEventsBtn.addEventListener('click', toggleMergeMode);
+  dom.cancelEventMergeBtn.addEventListener('click', cancelMergeMode);
+  dom.confirmEventMergeBtn.addEventListener('click', submitEventMerge);
   dom.editLayoutBtn.addEventListener('click', toggleLayoutEditing);
   dom.finishLayoutBtn.addEventListener('click', () => setLayoutEditing(false));
   dom.resetLayoutBtn.addEventListener('click', resetLayout);
@@ -149,6 +154,7 @@ function bindEvents() {
   dom.planReminderIgnoreBtn.addEventListener('click', ignorePlanReminder);
   dom.reviewDetailStartBtn.addEventListener('click', () => { const id=state.selectedReviewId,startPoint=document.getElementById('reviewStartPointInput')?.value.trim()||'';closeModal('reviewDetailModal');if(id)startReview(id,startPoint); });
   dom.eventDetailEditBtn.addEventListener('click', editSelectedDetailEvent);
+  dom.eventDetailReopenBtn.addEventListener('click', () => reopenCompletedEvent(state.selectedDetailEventId));
   dom.eventDetailStartBtn.addEventListener('click', startSelectedDetailEvent);
   dom.stopFocusBtn.addEventListener('click', () => finishFocus(false));
   dom.pauseFocusBtn.addEventListener('click', () => pauseFocus());
@@ -196,6 +202,7 @@ function bindEvents() {
   canvas.addEventListener('mousemove', onCanvasMove);
   canvas.addEventListener('mouseleave', () => {
     state.hoveredEventId = null;
+    dom.timelineTooltip.classList.add('hidden');
     if (state.selection) state.selection.hoverSlot = null;
     renderTimeline();
   });
@@ -203,14 +210,16 @@ function bindEvents() {
   canvas.addEventListener('pointerdown', onCanvasPointerDown);
   dom.sideResizeHandle.addEventListener('pointerdown', (event) => beginLayoutResize(event, 'side'));
   dom.focusReviewHandle.addEventListener('pointerdown', (event) => beginLayoutResize(event, 'focus'));
-  window.addEventListener('resize', renderTimeline);
+  window.addEventListener('resize', () => {renderTimeline();if(!dom.statsModal.classList.contains('hidden'))renderStats();});
   window.addEventListener('keydown', onKeydown);
   window.addEventListener('focus', handleAppResume);
   window.addEventListener('pageshow', handleAppResume);
   document.addEventListener('visibilitychange', () => { if(!document.hidden)handleAppResume(); });
   document.addEventListener('pointerdown', unlockAudio, {once:true});
   window.addEventListener('beforeinstallprompt', (event) => { event.preventDefault();state.installPrompt=event;dom.installAppBtn.classList.remove('hidden'); });
-  window.addEventListener('appinstalled', () => { state.installPrompt=null;dom.installAppBtn.classList.add('hidden'); });
+  window.addEventListener('appinstalled', () => { state.installPrompt=null;dom.installAppBtn.classList.add('hidden');requestLandscapeOrientation(); });
+  document.addEventListener('fullscreenchange', requestLandscapeOrientation);
+  requestLandscapeOrientation();
 }
 
 function clone(value) { return JSON.parse(JSON.stringify(value)); }
@@ -230,11 +239,20 @@ function slotParts(slot) { const value=clamp(Math.round(slot),0,1439); return {h
 function slotLabel(slot) { if(slot>=1440)return '24:00';const p=slotParts(slot); return `${pad(p.hour)}:${pad(p.minute)}`; }
 function eventTimeParts(slot){const ms=Math.round(clamp(Number(slot)||0,0,1440)*60000);return{hour:Math.floor(ms/3600000),minute:Math.floor(ms%3600000/60000),second:(ms%60000)/1000};}
 function eventTimeLabel(slot){const p=eventTimeParts(slot),second=p.second<10?`0${p.second}`:String(p.second);return `${pad(p.hour)}:${pad(p.minute)}${p.second?':'+second:''}`;}
+function eventTimeSecondLabel(slot){const seconds=Math.round(clamp(Number(slot)||0,0,1440)*60),hour=Math.floor(seconds/3600),minute=Math.floor(seconds%3600/60),second=seconds%60;return `${pad(hour)}:${pad(minute)}:${pad(second)}`;}
 function durationLabel(seconds) { const value=Math.max(0,Number(seconds)||0);if(value>0&&value<60)return `${Math.max(1,Math.round(value))}s`;const mins=Math.round(value/60); if(mins<60)return `${mins}m`; return `${Math.floor(mins/60)}h ${mins%60}m`; }
 function clockLabel(seconds) { const v=Math.max(0,Math.floor(seconds)); return `${pad(Math.floor(v/3600))}:${pad(Math.floor(v%3600/60))}:${pad(v%60)}`; }
+function roundedClockLabel(seconds) { return clockLabel(Math.round(Math.max(0,Number(seconds)||0))); }
 function escapeHtml(text) { return String(text??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;'); }
 function normalizeDate(value) { const date=new Date(value); return Number.isNaN(date.getTime())?value:dateKey(date); }
 function setToolLabel(button,label,glyph){const text=button.querySelector('.tool-label');if(text)text.textContent=label;else button.textContent=label;if(glyph){const icon=button.querySelector('.tool-glyph');if(icon)icon.textContent=glyph;}}
+
+async function requestLandscapeOrientation() {
+  const mobileLike=window.matchMedia('(max-width: 1024px) and (pointer: coarse)').matches;
+  const appLike=window.matchMedia('(display-mode: standalone)').matches||Boolean(document.fullscreenElement);
+  if(!mobileLike||!appLike||!screen.orientation?.lock)return false;
+  try { await screen.orientation.lock('landscape'); return true; } catch { return false; }
+}
 
 function parseHiddenHours(text) {
   return String(text||'').split(',').map((item)=>item.trim()).filter(Boolean).map((item)=>item.split('-').map(Number))
@@ -254,11 +272,6 @@ function snapSlot(slot) { const interval=Number(state.settings.minuteInterval)||
 function createLayout(width,hourHeight,top=0) {
   const hours=visibleHours(),planWidth=Math.round(width*clamp(state.settings.planRatio,.25,.75));
   const result={width,hourHeight,top,hours,planWidth,rowHeights:hours.map(()=>hourHeight),rowOffsets:hours.map((_,i)=>i*hourHeight)};
-  currentEvents().forEach(event=>{
-    const label=layoutEventLabel(ctx,event,result);if(!label)return;
-    const needed=state.settings.eventPlacement==='bottom'?label.height+22:label.height*2+22;
-    result.rowHeights[label.segment.index]=Math.max(result.rowHeights[label.segment.index],needed);
-  });
   let offset=0;result.rowOffsets=result.rowHeights.map(height=>{const start=offset;offset+=height;return start;});result.height=top+offset;return result;
 }
 
@@ -332,23 +345,21 @@ function layoutEventLabel(context,event,targetLayout) {
   const subject=subjectById(event.categoryId),fontSize=clamp(event.textSize||subject?.textSize||state.settings.defaultTextSize,10,24),smallSize=Math.max(9,fontSize-2),lineHeight=fontSize+5;
   const prefix=[event.taskStatus==='paused'?'Ⅱ':event.halfZone==='plan'?(event.planCompletedAt?'✓':''): '',event.important?'★':'',(event.categoryName||'').split('/')[1]||'',...(event.actionTypes||[]).map(type=>ACTION_TYPE_ICONS[type]).filter(Boolean)].filter(Boolean).join(' ');
   const runs=[{text:prefix?prefix+' ':'',font:`600 ${smallSize}px "Segoe UI","Microsoft YaHei"`,color:'#607067'},{text:eventTitle(event),font:`${(event.italic??subject?.italic)?'italic ':''}${(event.bold??subject?.bold)?700:400} ${fontSize}px "Segoe UI","Microsoft YaHei"`,color:event.textColor||'#20231f'},{text:event.materialLocation?' '+event.materialLocation:'',font:`400 ${smallSize}px "Segoe UI","Microsoft YaHei"`,color:'#526259'}];
-  const glyphs=runs.flatMap(run=>Array.from(run.text).map(char=>({...run,text:char}))),parts=[];let x=0,line=0;
+  const glyphs=runs.flatMap(run=>Array.from(run.text).map(char=>({...run,text:char}))),parts=[];let x=0,truncated=false;
   context.save();
   for(let i=0;i<glyphs.length;i++){
     const glyph=glyphs[i];context.font=glyph.font;const width=context.measureText(glyph.text).width;
-    if(placement.hasFollowing){
-      const ellipsis=context.measureText('…').width;
-      if(x+width+(i<glyphs.length-1?ellipsis:0)>placement.width){if(placement.width>=ellipsis)parts.push({...glyph,text:'…',x:Math.min(x,placement.width-ellipsis),line});break;}
-    }else if(x>0&&x+width>placement.width){line++;x=0;}
+    const ellipsis=context.measureText('…').width;
+    if(x+width+(i<glyphs.length-1?ellipsis:0)>placement.width){truncated=i<glyphs.length;if(placement.width>=ellipsis)parts.push({...glyph,text:'…',x:Math.min(x,placement.width-ellipsis),line:0});break;}
     if(placement.width<1)break;
-    parts.push({...glyph,x,line});x+=width;
+    parts.push({...glyph,x,line:0});x+=width;
   }
   context.restore();
-  return {...placement,parts,lineHeight,height:(line+1)*lineHeight,fontSize};
+  return {...placement,parts,lineHeight,height:lineHeight,fontSize,truncated,fullText:runs.map(run=>run.text).join('')};
 }
 function drawEvent(context,targetLayout,event,exportMode) {
   const segments=eventSegments(event,targetLayout);if(!segments.length)return;const style=eventStyle(event);
-  const active=!exportMode&&(state.selectedEventId===event.id||state.hoveredEventId===event.id),subject=subjectById(event.categoryId),isReview=event.taskType==='review';
+  const active=!exportMode&&(state.selectedEventId===event.id||state.hoveredEventId===event.id||state.mergeSelection.has(event.id)),subject=subjectById(event.categoryId),isReview=event.taskType==='review';
   const arrowWidth=isReview?clamp(Number(state.settings.reviewArrowWidth)||2,1,6):clamp(Number(state.settings.arrowWidth)||1.75,1,5),arrowSize=isReview?clamp(Number(state.settings.reviewArrowSize)||7,3,14):clamp(Number(state.settings.arrowSize)||6,3,12),reviewDash={short:[3,3],medium:[6,4],long:[10,5],solid:[]}[state.settings.reviewArrowDash]||[6,4];
   context.save();context.strokeStyle=rgba(style.color,style.opacity);context.fillStyle=rgba(style.color,style.opacity);context.lineWidth=active?arrowWidth+1.5:arrowWidth;context.lineCap='round';
   segments.forEach(seg=>{if(isReview)context.setLineDash(reviewDash);context.beginPath();context.moveTo(seg.x1,seg.y);context.lineTo(seg.x2,seg.y);context.stroke();context.setLineDash([]);
@@ -360,8 +371,8 @@ function drawEvent(context,targetLayout,event,exportMode) {
     const y=label.segment.y-label.height-5;
     context.fillStyle='rgba(255,255,255,.95)';context.fillRect(label.x,y,label.width,label.height);
     context.beginPath();context.rect(label.x,y,label.width,label.height);context.clip();
-    context.globalAlpha=event.textOpacity??subject?.textOpacity??.92;context.textAlign='left';context.textBaseline='middle';
-    label.parts.forEach(part=>{context.font=part.font;context.fillStyle=part.color;context.fillText(part.text,label.x+part.x,y+part.line*label.lineHeight+label.lineHeight/2);});
+    context.globalAlpha=exportMode?1:(event.textOpacity??subject?.textOpacity??.92);context.textAlign='left';context.textBaseline='middle';
+    label.parts.forEach(part=>{context.font=part.font;context.fillStyle=exportMode?'#333':part.color;context.fillText(part.text,label.x+part.x,y+part.line*label.lineHeight+label.lineHeight/2);});
   }
   context.restore();
 }
@@ -401,15 +412,18 @@ function hitTest(event){
 
 function toggleSelection() {
   if(state.selection){cancelSelection();return;}
-  closeAllModals();state.selection={zone:state.settings.defaultSelectionZone,startSlot:null,hoverSlot:null};state.selectedEventId=null;
+  cancelMergeMode();closeAllModals();state.selection={zone:state.settings.defaultSelectionZone,startSlot:null,hoverSlot:null};state.selectedEventId=null;
   setToolLabel(dom.addEventBtn,'取消选点','×');dom.addEventBtn.title='取消选点';dom.addEventBtn.classList.add('danger');renderTimeline();
 }
 function cancelSelection(){state.selection=null;setToolLabel(dom.addEventBtn,'选时间','＋');dom.addEventBtn.title='在时间轴选时间';dom.addEventBtn.classList.remove('danger');renderTimeline();}
 function onCanvasMove(event) {
   if(state.selection){const p=pointerInfo(event);if(!Number.isFinite(state.selection.startSlot))state.selection.zone=p.zone;state.selection.hoverSlot=p.zone===state.selection.zone?p.slot:null;renderTimeline();return;}
   const hit=hitTest(event),id=hit?.id||null;if(id!==state.hoveredEventId){state.hoveredEventId=id;renderTimeline();}
+  const label=hit?layoutEventLabel(ctx,hit,layout):null;
+  if(label?.truncated)showTimelineTooltip(event.clientX,event.clientY,label.fullText.trim());else dom.timelineTooltip.classList.add('hidden');
 }
 function onCanvasClick(event) {
+  if(state.mergeMode){const hit=hitTest(event);if(!hit)return;if(hit.halfZone!=='record'||(hit.taskType||'learn')!=='learn'){window.alert('只能合并时间轴记录区的学习事件。');return;}state.mergeSelection.has(hit.id)?state.mergeSelection.delete(hit.id):state.mergeSelection.add(hit.id);renderMergeBar();renderTimeline();return;}
   if(!state.selection){const hit=hitTest(event);state.selectedEventId=hit?.id||null;renderTimeline();clearTimeout(state.canvasClickTimer);if(hit)state.canvasClickTimer=setTimeout(()=>openEventDetail(hit.id),190);return;}
   const p=pointerInfo(event);
   if(!Number.isFinite(state.selection.startSlot)){state.selection.zone=p.zone;state.selection.startSlot=p.slot;state.selection.hoverSlot=p.slot;renderTimeline();return;}
@@ -417,14 +431,49 @@ function onCanvasClick(event) {
   if(p.slot<=state.selection.startSlot){window.alert('结束时间需要晚于开始时间。');return;}
   const preset={halfZone:p.zone,startSlot:state.selection.startSlot,endSlot:p.slot};cancelSelection();openEventModal(null,preset);
 }
-function onCanvasDoubleClick(event){if(!state.selection){clearTimeout(state.canvasClickTimer);const hit=hitTest(event);if(hit)openEventModal(hit);}}
-function onCanvasContextMenu(event){event.preventDefault();if(state.selection)return;const hit=hitTest(event);if(!hit)return;
+function onCanvasDoubleClick(event){if(!state.selection&&!state.mergeMode){clearTimeout(state.canvasClickTimer);const hit=hitTest(event);if(hit)openEventModal(hit);}}
+function positionContextMenu(clientX,clientY){const rect=dom.contextMenu.getBoundingClientRect(),vw=Number(window.innerWidth)||1024,vh=Number(window.innerHeight)||768,gap=8,left=clamp(clientX,8,Math.max(8,vw-rect.width-8)),below=clientY+gap,top=below+rect.height<=vh-8?below:Math.max(8,clientY-rect.height-gap);dom.contextMenu.style.left=`${left}px`;dom.contextMenu.style.top=`${top}px`;return{left,top};}
+function onCanvasContextMenu(event){event.preventDefault();if(state.selection||state.mergeMode)return;const hit=hitTest(event);if(!hit)return;
   dom.contextMenu.innerHTML=`${hit.halfZone==='plan'?'<button class="primary" data-action="start">▶ 开始学习</button>':''}<button data-action="detail">查看学习详情</button><button data-action="edit">编辑事件</button><button class="danger" data-action="delete">删除事件</button>`;dom.contextMenu.style.left=`${event.clientX}px`;dom.contextMenu.style.top=`${event.clientY}px`;dom.contextMenu.classList.remove('hidden');
+  positionContextMenu(event.clientX,event.clientY);
   const startButton=dom.contextMenu.querySelector('[data-action="start"]');if(startButton)startButton.onclick=()=>{hideContextMenu();startPlanEvent(hit.id);};
   dom.contextMenu.querySelector('[data-action="detail"]').onclick=()=>{hideContextMenu();openEventDetail(hit.id);};
   dom.contextMenu.querySelector('[data-action="edit"]').onclick=()=>{hideContextMenu();openEventModal(hit);};dom.contextMenu.querySelector('[data-action="delete"]').onclick=()=>{hideContextMenu();deleteEvent(hit.id);};
 }
 function hideContextMenu(){dom.contextMenu.classList.add('hidden');dom.contextMenu.innerHTML='';}
+function showTimelineTooltip(clientX,clientY,text){const vw=Number(window.innerWidth)||1024,vh=Number(window.innerHeight)||768,gap=12;dom.timelineTooltip.textContent=text;dom.timelineTooltip.style.left='8px';dom.timelineTooltip.style.top='8px';dom.timelineTooltip.classList.remove('hidden');const rect=dom.timelineTooltip.getBoundingClientRect(),left=clamp(clientX+gap,8,Math.max(8,vw-rect.width-8)),below=clientY+gap,top=below+rect.height<=vh-8?below:Math.max(8,clientY-rect.height-gap);dom.timelineTooltip.style.left=`${left}px`;dom.timelineTooltip.style.top=`${top}px`;return{left,top};}
+
+function renderMergeBar(){
+  const existing=new Set(state.events.map(event=>event.id));state.mergeSelection=new Set([...state.mergeSelection].filter(id=>existing.has(id)));const count=state.mergeSelection.size;dom.eventMergeBar.classList.toggle('hidden',!state.mergeMode);dom.eventMergeCount.textContent=`已选择 ${count} 条`;dom.confirmEventMergeBtn.disabled=count<2;
+  dom.mergeEventsBtn.classList.toggle('active',state.mergeMode);setToolLabel(dom.mergeEventsBtn,state.mergeMode?'选择中':'合并',state.mergeMode?'✓':'并');
+}
+function toggleMergeMode(){
+  if(state.mergeMode){cancelMergeMode();return;}
+  cancelSelection();closeAllModals();state.mergeMode=true;state.mergeSelection.clear();state.selectedEventId=null;dom.eventMergeName.value='';renderMergeBar();renderTimeline();
+}
+function cancelMergeMode(){state.mergeMode=false;state.mergeSelection.clear();dom.eventMergeName.value='';renderMergeBar();dom.timelineTooltip.classList.add('hidden');renderTimeline();}
+function uniqueJoined(values,separator){return [...new Set(values.map(value=>String(value||'').trim()).filter(Boolean))].join(separator);}
+function eventEndTimestamp(event){const date=parseDate(event.date),seconds=Math.round(Number(event.endSlot||0)*60);date.setHours(0,0,0,0);date.setSeconds(seconds);return date.getTime();}
+function mergeSelectedEvents(name=''){
+  const selected=[...state.mergeSelection].map(id=>state.events.find(event=>event.id===id)).filter(Boolean).sort((a,b)=>a.date.localeCompare(b.date)||a.startSlot-b.startSlot||a.endSlot-b.endSlot);
+  if(selected.length<2){window.alert('请至少选择两条学习事件。');return false;}
+  if(selected.some(event=>event.halfZone!=='record'||(event.taskType||'learn')!=='learn')){window.alert('只能合并记录区的学习事件。');return false;}
+  if(new Set(selected.map(event=>(event.subjectPath||[event.categoryId]).join('/'))).size>1){window.alert('请选择同一学科层级下的事件进行合并。');return false;}
+  if(selected.some(eventHasRunningDependency)){window.alert('请先暂停选中事件及其关联复习。');return false;}
+  const selectedIds=new Set(selected.map(event=>event.id)),oldTasks=[...new Set(selected.map(event=>taskById(event.focusTaskId)).filter(Boolean))];
+  if(oldTasks.some(task=>state.events.some(event=>event.focusTaskId===task.id&&!selectedIds.has(event.id)))){window.alert('多段任务必须选中它的全部时段后再合并。');return false;}
+  const first=selected[0],last=selected.at(-1),subject=subjectById(first.categoryId),mergedName=String(name||'').trim()||eventTitle(first),sources=new Set(selected.map(event=>event.id));
+  oldTasks.forEach(task=>{if(task.reviewSourceEventId)sources.add(task.reviewSourceEventId);});
+  pushHistory();sources.forEach(sourceId=>removeReviewsForSource(sourceId,'events-merged'));
+  oldTasks.forEach(task=>{task.status='abandoned';task.abandonedAt=new Date().toISOString();task.abandonReason='events-merged';task.segmentEventIds=[];task.totalSeconds=0;});
+  const actionTypes=[...new Set(selected.flatMap(event=>event.actionTypes||[]))],fields={eventName:mergedName,materialLocation:uniqueJoined(selected.map(event=>event.materialLocation),'；'),summary:uniqueJoined(selected.map(event=>event.textContent),'\n'),notes:uniqueJoined(selected.map(event=>event.notes),'\n\n'),leftover:uniqueJoined(selected.map(event=>event.leftover),'\n'),mastery:[...selected].reverse().find(event=>event.mastery&&event.mastery!=='unknown')?.mastery||first.mastery||'unknown',actionType:actionTypes[0]||'video',actionTypes:actionTypes.length?actionTypes:['video']};
+  const task={id:uid('task'),status:'paused',taskType:'learn',categoryId:first.categoryId,categoryName:first.categoryName,subjectPath:[...(first.subjectPath||[first.categoryId])],color:first.color||subject?.color||state.settings.defaultRecordColor,type:'countup',durationSeconds:0,sourceEventId:null,reviewId:null,planEventId:null,leftoverEventId:null,suppressReviews:false,createdAt:new Date(Math.min(...selected.map(event=>eventEndTimestamp(event)))).toISOString(),totalSeconds:selected.reduce((sum,event)=>sum+focusSeconds(event),0),segmentEventIds:selected.map(event=>event.id),fields,mergedSourceEventIds:selected.map(event=>event.id)};
+  state.focusTasks.push(task);selected.forEach(event=>{event.focusTaskId=task.id;delete event.sourceEventId;delete event.sourceReviewId;delete event.sourcePlanEventId;});syncTaskRecords(task);
+  const completedAt=Math.max(...selected.map(event=>eventEndTimestamp(event)));completeFocusTask(task,completedAt);
+  if(task.reviewSourceEventId&&task.reviewSourceEventId!==first.id){removeReviewsForSource(task.reviewSourceEventId,'events-merged');task.reviewSourceEventId=first.id;let deepest=subject;for(const id of (task.subjectPath||[]).slice(1))deepest=deepest?.children?.find(item=>item.id===id)||deepest;if(deepest?.reviewEnabled!==false)generateReviews(first);}
+  validateConflicts();state.selectedDetailEventId=first.id;state.mergeMode=false;state.mergeSelection.clear();dom.eventMergeName.value='';saveBackup();renderAll();renderMergeBar();openEventDetail(first.id);return true;
+}
+function submitEventMerge(){mergeSelectedEvents(dom.eventMergeName.value);}
 
 function onCanvasPointerDown(event) {
   if((state.layoutEditing||state.settings.dividerDrag)&&Math.abs(pointerInfo(event).x-layout.planWidth)<=9){
@@ -436,14 +485,14 @@ function onCanvasPointerDown(event) {
 function toggleLayoutEditing(){setLayoutEditing(!state.layoutEditing);}
 function setLayoutEditing(value){state.layoutEditing=value;document.body.classList.toggle('layout-editing',value);dom.layoutEditBar.classList.toggle('hidden',!value);setToolLabel(dom.editLayoutBtn,value?'完成':'布局',value?'✓':'⤢');dom.editLayoutBtn.title=value?'完成布局':'编辑布局';renderTimeline();}
 function beginLayoutResize(event,type) {
-  if(!state.layoutEditing)return;event.preventDefault();const handle=event.currentTarget;handle.classList.add('dragging');
-  const move=(e)=>{const rect=document.querySelector('.side-panel').getBoundingClientRect();if(type==='side'){const mainRect=dom.mainLayout.getBoundingClientRect();state.settings.sideWidth=clamp(mainRect.right-e.clientX,260,560);}else{state.settings.focusHeight=clamp(e.clientY-rect.top-4,180,600);}applyLayoutSettings();renderTimeline();};
+  if(!state.layoutEditing)return;event.preventDefault();const handle=event.currentTarget,startX=event.clientX,focusWidth=dom.focusCard.getBoundingClientRect().width;handle.classList.add('dragging');
+  const move=(e)=>{const rect=document.querySelector('.side-panel').getBoundingClientRect();if(type==='side'&&state.settings.layoutMode==='columns'&&window.matchMedia('(min-width: 1000px)').matches){state.settings.focusColumnWidth=clamp(focusWidth+startX-e.clientX,245,560);}else if(type==='side'){const mainRect=dom.mainLayout.getBoundingClientRect();state.settings.sideWidth=clamp(mainRect.right-e.clientX,260,560);}else{state.settings.focusHeight=clamp(e.clientY-rect.top-4,180,600);}applyLayoutSettings();renderTimeline();};
   const up=()=>{handle.classList.remove('dragging');saveBackup();window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);};
   window.addEventListener('pointermove',move);window.addEventListener('pointerup',up);
 }
-function applyLayoutSettings(){document.documentElement.style.setProperty('--side-width',`${state.settings.sideWidth}px`);document.documentElement.style.setProperty('--date-height',`${state.settings.dateHeight||62}px`);document.documentElement.style.setProperty('--focus-height',`${state.settings.focusCollapsed?54:state.settings.focusHeight}px`);document.body.classList.toggle('compact-toolbar',Boolean(state.settings.compactToolbar));dom.focusCard.classList.toggle('collapsed',Boolean(state.settings.focusCollapsed));dom.focusCollapseBtn.textContent=state.settings.focusCollapsed?'◌':'◉';dom.focusCollapseBtn.setAttribute('aria-label',state.settings.focusCollapsed?'展开专注计时':'收纳专注计时');}
+function applyLayoutSettings(){document.documentElement.style.setProperty('--focus-column-width',`${clamp(Number(state.settings.focusColumnWidth)||320,245,560)}px`);dom.layoutMode.value=state.settings.layoutMode||'stacked';dom.mainLayout.classList.toggle('three-columns',state.settings.layoutMode==='columns');document.documentElement.style.setProperty('--side-width',`${state.settings.sideWidth}px`);document.documentElement.style.setProperty('--date-height',`${state.settings.dateHeight||62}px`);document.documentElement.style.setProperty('--focus-height',`${state.settings.focusCollapsed?54:state.settings.focusHeight}px`);document.body.classList.toggle('compact-toolbar',Boolean(state.settings.compactToolbar));dom.focusCard.classList.toggle('collapsed',Boolean(state.settings.focusCollapsed));dom.focusCollapseBtn.textContent=state.settings.focusCollapsed?'◌':'◉';dom.focusCollapseBtn.setAttribute('aria-label',state.settings.focusCollapsed?'展开专注计时':'收纳专注计时');}
 function toggleFocusCollapsed(){state.settings.focusCollapsed=!state.settings.focusCollapsed;applyLayoutSettings();saveBackup();renderTimeline();}
-function resetLayout(){state.settings.sideWidth=330;state.settings.dateHeight=62;state.settings.focusHeight=285;state.settings.planRatio=.5;state.settings.focusCollapsed=false;applyLayoutSettings();syncSettingsToUI();saveBackup();renderTimeline();}
+function resetLayout(){state.settings.focusColumnWidth=320;state.settings.layoutMode='stacked';state.settings.sideWidth=330;state.settings.dateHeight=62;state.settings.focusHeight=180;state.settings.planRatio=.5;state.settings.focusCollapsed=false;applyLayoutSettings();syncSettingsToUI();saveBackup();renderTimeline();}
 
 function overlayFocusables(el){return [...el.querySelectorAll('button, input:not([type="hidden"]), select, textarea, summary, a[href], [tabindex]')].filter(node=>!node.disabled&&node.tabIndex>=0&&node.getClientRects().length);}
 function openModal(id){const el=document.getElementById(id);if(!el)return;state.modalReturnFocus.set(id,document.activeElement);state.modalStack=state.modalStack.filter(item=>item!==id);state.modalStack.push(id);el.classList.remove('hidden');el.setAttribute('aria-hidden','false');el.setAttribute('role','dialog');el.setAttribute('aria-modal','true');overlayFocusables(el)[0]?.focus();}
@@ -580,25 +629,39 @@ function renderEventDetail(){
   const task=taskById(event.focusTaskId),subject=subjectById(event.categoryId),reviewSourceId=task?.reviewSourceEventId||event.id;
   const reviews=state.reviews.filter(review=>review.sourceEventId===reviewSourceId).sort((a,b)=>a.reviewNumber-b.reviewNumber);
   const actions=(event.actionTypes||[]).map(type=>ACTION_TYPE_LABELS[type]).filter(Boolean),leftover=event.leftover||'',resolved=Boolean(event.leftoverCompletedAt);
-  dom.eventDetailTitle.textContent=eventTitle(event);
+  dom.eventDetailTitle.textContent='事件详情';
   const schedule=reviews.length?reviews.map(review=>`<button class="review-schedule-row ${review.completed?'completed':''} ${review.abandoned?'abandoned':''}" data-detail-review="${review.id}"><b>D${reviewIntervalDays(review,event)}</b><span>${review.reviewDate} · 第 ${review.reviewNumber} 次</span><span class="status">${reviewStatusText(review)}</span></button>`).join(''):'<p class="settings-note">未完成的学习任务不会生成复习排期。</p>';
-  const segments=task?state.events.filter(item=>item.focusTaskId===task.id):[];
-  dom.eventDetailBody.innerHTML=`<section class="event-detail-hero" style="--event-color:${subject?.color||event.color||'#527a64'}"><span>${escapeHtml(event.categoryName||'未分类')} · ${event.date} · ${eventTimeLabel(event.startSlot)}–${eventTimeLabel(event.endSlot)}</span><h4>${escapeHtml(eventTitle(event))}</h4><p>${escapeHtml([actions.join(' / '),event.materialLocation].filter(Boolean).join(' · '))}</p></section>
-    <section class="event-detail-section wide"><h4>事件信息</h4><div class="event-detail-facts"><div><span>事件名称</span><b>${escapeHtml(eventTitle(event))}</b></div><div><span>资料定位</span><b>${escapeHtml(event.materialLocation||'未填写')}</b></div><div><span>掌握程度</span><b>${MASTERY_LABELS[event.mastery]||'尚未判断'}</b></div><div><span>学习摘要</span><b>${escapeHtml(event.textContent||'未填写')}</b></div></div></section>
-    ${task?`<section class="event-detail-section wide"><h4>${taskStatusLabel(task.status)} · 累计 ${clockLabel(task.totalSeconds)} · ${segments.length} 段</h4><ul class="task-segments">${segments.map(segment=>`<li>${segment.date} ${eventTimeLabel(segment.startSlot)}–${eventTimeLabel(segment.endSlot)} · ${clockLabel(segment.focusSeconds)}</li>`).join('')}</ul></section>`:''}
+  const segments=(task?state.events.filter(item=>item.focusTaskId===task.id):[event]).sort((a,b)=>a.date.localeCompare(b.date)||a.startSlot-b.startSlot),totalSeconds=task?.totalSeconds??focusSeconds(event),status=task?taskStatusLabel(task.status):'已完成';
+  dom.eventDetailBody.innerHTML=`<section class="event-detail-hero" style="--event-color:${subject?.color||event.color||'#527a64'}"><span>${escapeHtml(event.categoryName||'未分类')}</span><h4>${escapeHtml(eventTitle(event))}</h4><p>${escapeHtml(event.materialLocation||'未填写资料定位')}</p>${actions.length?`<small>${escapeHtml(actions.join(' / '))}</small>`:''}</section>
+    <section class="event-detail-section wide"><h4>学习摘要与掌握程度</h4><div class="event-detail-facts"><div><span>学习摘要</span><b>${escapeHtml(event.textContent||'未填写')}</b></div><div><span>掌握程度</span><b>${MASTERY_LABELS[event.mastery]||'尚未判断'}</b></div></div></section>
     <section class="event-detail-section"><h4>学习笔记</h4><textarea id="detailLearningNotes" class="learning-notes" maxlength="1200" placeholder="自己的理解、推导和易错点">${escapeHtml(event.notes||'')}</textarea><button id="detailSaveLearningBtn" class="tool-btn primary">保存笔记</button></section>
     <section class="event-detail-section"><h4>遗留内容</h4>${leftover?`<div class="detail-leftover ${resolved?'resolved':''}">${escapeHtml(leftover)}</div><div class="detail-section-actions"><button id="detailLeftoverToggleBtn" class="tool-btn">${resolved?'恢复待处理':'标记已解决'}</button>${resolved?'':`<button id="detailLeftoverStartBtn" class="tool-btn primary">开始处理</button>`}</div>`:'<p class="settings-note">没有遗留内容。</p>'}</section>
+    <section class="event-detail-section wide"><h4>${status} · 总时长 ${roundedClockLabel(totalSeconds)} · ${segments.length} 段</h4><ul class="task-segments">${segments.map(segment=>`<li>${segment.date} ${eventTimeSecondLabel(segment.startSlot)}–${eventTimeSecondLabel(segment.endSlot)} · ${roundedClockLabel(focusSeconds(segment))}</li>`).join('')}</ul></section>
     <section class="event-detail-section wide review-schedule-final"><h4>复习排期 <span>${reviews.length} 次</span></h4><div class="review-schedule-list">${schedule}</div></section>`;
   dom.eventDetailBody.querySelectorAll('[data-detail-review]').forEach(button=>button.onclick=()=>{closeModal('eventDetailModal');openReviewDetail(button.dataset.detailReview);});
   document.getElementById('detailSaveLearningBtn').onclick=saveEventLearningDetails;
   const toggle=document.getElementById('detailLeftoverToggleBtn'),start=document.getElementById('detailLeftoverStartBtn');
   if(toggle)toggle.onclick=()=>toggleLeftover(event.id);if(start)start.onclick=()=>startLeftoverEvent(event.id);
   const pending=reviews.find(review=>!review.completed&&!review.abandoned&&review.reviewDate<=dateKey(new Date()));
+  const canReopen=event.halfZone==='record'&&(event.taskType||'learn')==='learn'&&(task?task.status==='completed':true);dom.eventDetailReopenBtn.classList.toggle('hidden',!canReopen);dom.eventDetailReopenBtn.disabled=Boolean(eventHasRunningDependency(event));
   dom.eventDetailStartBtn.disabled=Boolean(task?.status==='running'||(event.planCompletedAt&&event.halfZone==='plan'&&!pending));
   dom.eventDetailStartBtn.textContent=task?.status==='paused'?'继续未完成任务':task?.status==='running'?'正在计时':pending?'开始到期复习':'开始学习';
 }
 
 function saveEventLearningDetails(){const event=state.events.find(item=>item.id===state.selectedDetailEventId);if(!event)return;pushHistory();event.notes=document.getElementById('detailLearningNotes')?.value.trim()||'';const task=taskById(event.focusTaskId);if(task){task.fields.notes=event.notes;syncTaskRecords(task);}saveBackup();renderEventDetail();}
+
+function taskFieldsFromEvent(event){const actionTypes=[...(event.actionTypes||[])];return{eventName:eventTitle(event),materialLocation:event.materialLocation||'',summary:event.textContent||'',notes:event.notes||'',leftover:event.leftover||'',mastery:event.mastery||'unknown',actionType:actionTypes[0]||'video',actionTypes:actionTypes.length?actionTypes:['video']};}
+function reopenCompletedEvent(id){
+  const event=state.events.find(item=>item.id===id);if(!event||event.halfZone!=='record'||(event.taskType||'learn')!=='learn')return false;
+  if(eventHasRunningDependency(event)){window.alert('请先暂停这个任务及其关联复习。');return false;}
+  let task=taskById(event.focusTaskId);if(task&&task.status!=='completed')return false;
+  if(!window.confirm('将这个已完成事件回退为未完成？关联复习排期会同步撤销。'))return false;
+  pushHistory();const sourceId=task?.reviewSourceEventId||event.id;removeReviewsForSource(sourceId,'completion-reopened');
+  if(!task){const subject=subjectById(event.categoryId);task={id:uid('task'),status:'paused',taskType:'learn',categoryId:event.categoryId,categoryName:event.categoryName,subjectPath:[...(event.subjectPath||[event.categoryId])],color:event.color||subject?.color||state.settings.defaultRecordColor,type:'countup',durationSeconds:0,sourceEventId:null,reviewId:null,planEventId:event.sourcePlanEventId||null,leftoverEventId:null,suppressReviews:false,createdAt:new Date(eventEndTimestamp(event)).toISOString(),totalSeconds:focusSeconds(event),segmentEventIds:[event.id],fields:taskFieldsFromEvent(event)};state.focusTasks.push(task);event.focusTaskId=task.id;}
+  task.status='paused';delete task.completedAt;delete task.reviewSourceEventId;delete task.abandonedAt;delete task.abandonReason;recomputeTaskDuration(task);state.events.filter(item=>item.focusTaskId===task.id).forEach(item=>delete item.completedDate);syncTaskRecords(task);
+  if(task.planEventId){const plan=state.events.find(item=>item.id===task.planEventId);if(plan){delete plan.planCompletedAt;if(task.segmentEventIds.includes(plan.generatedEventId))delete plan.generatedEventId;}}
+  saveBackup();renderAll();renderEventDetail();return true;
+}
 
 function editSelectedDetailEvent(){const event=state.events.find((item)=>item.id===state.selectedDetailEventId);if(!event)return;closeModal('eventDetailModal');openEventModal(event);}
 function startSelectedDetailEvent(){
@@ -662,7 +725,7 @@ function shiftDate(amount){refreshReviewDay();state.currentDate=addDays(state.cu
 function setReviewFilter(filter){refreshReviewDay();state.reviewFilter=filter;document.querySelectorAll('.filter-btn').forEach((b)=>b.classList.toggle('active',b.dataset.filter===filter));renderReviews();}
 function toggleReviewFullscreen(){const expanded=dom.reviewCard.classList.toggle('fullscreen');dom.reviewFullscreenBtn.textContent=expanded?'×':'⛶';dom.reviewFullscreenBtn.setAttribute('aria-label',expanded?'退出复习清单全屏':'全屏查看复习清单');document.body.classList.toggle('review-fullscreen-open',expanded);}
 function filteredReviews() {
-  const key=currentDateKey(),date=parseDate(key),weekStart=addDays(date,-((date.getDay()+6)%7)),weekEnd=addDays(weekStart,6),weekStartKey=dateKey(weekStart),weekEndKey=dateKey(weekEnd);return state.reviews.filter((r)=>{if(state.reviewFilter==='all')return true;if(r.completed||r.abandoned)return false;if(state.reviewFilter==='week')return r.reviewDate>=weekStartKey&&r.reviewDate<=weekEndKey;return r.reviewDate===key;
+  const key=currentDateKey(),date=parseDate(key),weekStart=addDays(date,-((date.getDay()+6)%7)),weekEnd=addDays(weekStart,6),weekStartKey=dateKey(weekStart),weekEndKey=dateKey(weekEnd);return state.reviews.filter((r)=>{if(state.reviewFilter==='all')return true;if(r.completed)return state.reviewFilter==='today'&&reviewCompletedDate(r)===key;if(r.abandoned)return false;if(state.reviewFilter==='week')return r.reviewDate>=weekStartKey&&r.reviewDate<=weekEndKey;return r.reviewDate===key;
   }).sort((a,b)=>a.reviewDate.localeCompare(b.reviewDate)||masteryPriority(a.mastery)-masteryPriority(b.mastery)||a.reviewNumber-b.reviewNumber);
 }
 function masteryPriority(value){return{weak:0,unknown:1,partial:2,mastered:3}[value]??1;}
@@ -679,18 +742,27 @@ function reviewCard(review){
   return `<article class="review-item ${review.completed?'done':''} ${review.abandoned?'abandoned':''}"><div class="review-topline"><span class="review-meta">${reviewIntervalLabel(review,source)} · 第 ${review.reviewNumber} 次 · ${review.reviewDate}${status?' · '+status:''}</span>${review.important||source?.important?'<span class="review-important">★ 重点</span>':''}</div><button class="review-title-button" data-review-detail="${review.id}"><strong>${escapeHtml(name)}</strong>${material?`<span class="review-material">${escapeHtml(material)}</span>`:''}</button><div class="review-tags">${actions.map(type=>`<span>${escapeHtml(ACTION_TYPE_LABELS[type]||type)}</span>`).join('')}<span class="mastery-badge mastery-${MASTERY_LABELS[mastery]?mastery:'unknown'}">${MASTERY_LABELS[mastery]||'尚未判断'}</span></div><div class="review-actions"><button class="tool-btn primary" data-review-start="${review.id}" ${review.completed||review.abandoned||task?.status==='running'?'disabled':''}>${task?.status==='paused'?'继续复习':task?.status==='running'?'复习中':'开始复习'}</button><button class="tool-btn" data-review-detail="${review.id}">查看详情</button><button class="tool-btn" data-review-complete="${review.id}">${review.completed?'恢复':'直接完成'}</button><button class="tool-btn" data-review-delay="${review.id}">推迟</button><button class="tool-btn" data-review-abandon="${review.id}">${review.abandoned?'恢复':'放弃本次'}</button></div></article>`;
 }
 
+function reviewCompletedDate(review){return review.completedAt?normalizeDate(review.completedAt):review.reviewDate;}
 function renderReviews() {
-  renderDate();const list=filteredReviews(),pending=list.filter((r)=>!r.completed&&!r.abandoned),weak=pending.filter((r)=>r.mastery==='weak').length;if(dom.reviewListSummary)dom.reviewListSummary.textContent=`${pending.length} 项${weak?` · ${weak} 薄弱`:''}`;
-  if(!list.length){const empty={today:'这一天没有待复习任务',week:'本周没有待复习任务',all:'尚未生成复习任务'}[state.reviewFilter]||'当前没有待复习任务';dom.reviewList.innerHTML=`<div class="review-empty">${empty}</div>`;return;}
-  const groups=new Map();list.forEach((review)=>{const source=state.events.find((event)=>event.id===review.sourceEventId),subject=subjectById(review.categoryId||source?.categoryId),key=subject?.id||review.categoryId||'other';if(!groups.has(key))groups.set(key,{name:subject?.name||(review.categoryName||source?.categoryName||'未分类').split('/')[0],color:subject?.color||'#6b7a72',items:[]});groups.get(key).items.push(review);});
-  dom.reviewList.innerHTML=[...groups.values()].map((group)=>`<section class="review-group" style="--review-group-color:${group.color}"><div class="review-group-heading"><span class="review-group-name">${escapeHtml(group.name)}</span><span>${group.items.length} 项</span></div><div class="review-group-items">${group.items.map(reviewCard).join('')}</div></section>`).join('');
-  dom.reviewList.querySelectorAll('[data-review-detail]').forEach((b)=>b.onclick=()=>openReviewDetail(b.dataset.reviewDetail));
-  dom.reviewList.querySelectorAll('[data-review-start]').forEach((b)=>b.onclick=()=>startReview(b.dataset.reviewStart));
-  dom.reviewList.querySelectorAll('[data-review-complete]').forEach((b)=>b.onclick=()=>toggleReview(b.dataset.reviewComplete));
-  dom.reviewList.querySelectorAll('[data-review-today]').forEach((b)=>b.onclick=()=>moveReviewToToday(b.dataset.reviewToday));
-  dom.reviewList.querySelectorAll('[data-review-delay]').forEach((b)=>b.onclick=()=>delayReview(b.dataset.reviewDelay));
-  dom.reviewList.querySelectorAll('[data-review-abandon]').forEach((b)=>b.onclick=()=>abandonReview(b.dataset.reviewAbandon));
+  renderDate();const list=filteredReviews(),pending=list.filter(r=>!r.completed&&!r.abandoned),weak=pending.filter(r=>r.mastery==='weak').length;
+  dom.reviewListSummary.textContent=`${pending.length} 项${weak?` · ${weak} 薄弱`:''}`;
+  const completed=state.reviewFilter==='today'?list.filter(r=>r.completed):[],groups=new Map();
+  list.filter(r=>state.reviewFilter!=='today'||!r.completed).forEach(review=>{
+    const source=reviewSource(review),subject=subjectById(review.categoryId||source?.categoryId),key=subject?.id||review.categoryId||source?.categoryId||'other';
+    if(!groups.has(key))groups.set(key,{name:subject?.name||(review.categoryName||source?.categoryName||'未分类').split('/')[0],color:subject?.color||'#6b7a72',items:[]});
+    groups.get(key).items.push(review);
+  });
+  const groupMarkup=(key,name,color,items,defaultOpen=true)=>{
+    const open=state.reviewGroupOpen.get(key)??defaultOpen;
+    return `<details class="review-group" data-review-group="${escapeHtml(key)}" style="--review-group-color:${color}" ${open?'open':''}><summary class="review-group-heading"><span class="review-group-name">${escapeHtml(name)}</span><span>${items.length} 项</span></summary><div class="review-group-items">${items.map(reviewCard).join('')}</div></details>`;
+  };
+  const empty={today:'这一天没有待复习任务',week:'本周没有待复习任务',all:'尚未生成复习任务'}[state.reviewFilter];
+  dom.reviewList.innerHTML=([...groups].map(([key,group])=>groupMarkup(key,group.name,group.color,group.items)).join('')||`<div class="review-empty">${empty}</div>`)+(state.reviewFilter==='today'?groupMarkup('completed:'+currentDateKey(),'已完成','#69756d',completed,false):'');
+  dom.reviewList.querySelectorAll('[data-review-group]').forEach(el=>el.addEventListener('toggle',()=>state.reviewGroupOpen.set(el.dataset.reviewGroup,el.open)));
+  const actions={'detail':openReviewDetail,'start':startReview,'complete':toggleReview,'today':moveReviewToToday,'delay':delayReview,'abandon':abandonReview};
+  Object.entries(actions).forEach(([action,handler])=>dom.reviewList.querySelectorAll('[data-review-'+action+']').forEach(button=>button.onclick=()=>handler(button.dataset['review'+action[0].toUpperCase()+action.slice(1)])));
 }
+
 function reviewHistoryRow(review,currentId){
   const source=reviewSource(review),isOverdue=!review.completed&&!review.abandoned&&(review.originalReviewDate||review.reviewDate)<currentDateKey(),status=review.completed?'completed':review.abandoned?'abandoned':isOverdue?'overdue':'pending',icon={completed:'✓',abandoned:'×',overdue:'!',pending:'○'}[status],label={completed:'已完成',abandoned:'已放弃',overdue:'已顺延',pending:'待复习'}[status],result=review.resultSummary||(review.completed?'已标记完成':review.abandoned?'本次已放弃':'尚未记录复习结果'),duration=review.resultSeconds?` · ${durationLabel(review.resultSeconds)}`:'';
   return `<div class="review-history-item ${status} ${review.id===currentId?'current':''}"><span class="review-history-icon">${icon}</span><div><strong>第 ${review.reviewNumber} 次 · ${reviewIntervalLabel(review,source)}</strong><span>${review.reviewDate} · ${label}${duration}</span><p>${escapeHtml(result)}</p></div></div>`;
@@ -725,7 +797,7 @@ function toggleReview(id){
   if(state.focus?.reviewId===id){window.alert('请先暂停当前复习。');return;}
   const task=state.focusTasks.find(item=>item.reviewId===id&&item.status==='paused');pushHistory();
   if(!r.completed&&task){completeFocusTask(task);if(state.pendingFocus?.taskId===task.id){state.pendingFocus=null;closeModal('focusDetailModal');}}
-  else{r.completed=!r.completed;r.abandoned=false;if(r.completed){r.completedAt=new Date().toISOString();r.resultSummary=r.resultSummary||'手动标记完成';}else{delete r.completedAt;if(r.resultSummary==='手动标记完成')delete r.resultSummary;}}
+  else{r.completed=!r.completed;r.abandoned=false;if(r.completed){r.completedAt=new Date().toISOString();r.resultSummary=r.resultSummary||'手动标记完成';}else{if(state.reviewFilter==='today'){r.originalReviewDate=r.originalReviewDate||r.reviewDate;r.reviewDate=currentDateKey();}delete r.completedAt;if(r.resultSummary==='手动标记完成')delete r.resultSummary;}}
   saveBackup();renderAll();
 }
 
@@ -748,12 +820,14 @@ function delayReview(id) {
 }
 
 function openCalendar(){refreshReviewDay();state.calendarMonth=startOfMonth(state.currentDate);renderCalendar();openModal('calendarModal');}
+function calendarHeatLevel(seconds){return seconds>0?clamp(Math.floor(seconds/3600),1,10):0;}
+function calendarHeatColor(seconds){return ['transparent','#e0efe1','#c9e4cd','#afd7b8','#93cba1','#75bc89','#58aa72','#40965d','#2e814c','#206c3d','#125730'][calendarHeatLevel(seconds)];}
 function renderCalendar() {
   const month=state.calendarMonth,year=month.getFullYear(),m=month.getMonth(),firstWeekday=(month.getDay()+6)%7,days=new Date(year,m+1,0).getDate();
   dom.calendarTitle.textContent=`${year} 年 ${m+1} 月`;const cells=['一','二','三','四','五','六','日'].map((d)=>`<div class="calendar-weekday">周${d}</div>`);
   for(let i=0;i<42;i+=1){const day=i-firstWeekday+1,date=new Date(year,m,day),key=dateKey(date),outside=date.getMonth()!==m;
     const records=state.events.filter((e)=>e.date===key&&e.halfZone==='record'),seconds=records.reduce((sum,e)=>sum+focusSeconds(e),0),reviews=state.reviews.filter((r)=>r.reviewDate===key&&!r.completed&&!r.abandoned).length;
-    cells.push(`<button class="calendar-day ${outside?'outside':''} ${key===dateKey(new Date())?'today':''}" data-calendar-date="${key}"><span class="calendar-day-number">${date.getDate()}</span><div class="calendar-day-summary">${seconds?durationLabel(seconds):''}${reviews?` · ${reviews}待复习`:''}</div><div class="calendar-day-events">${records.map((e)=>{const name=eventTitle(e),duration=durationLabel(focusSeconds(e));return`<div class="calendar-event" title="${escapeHtml(name)} · ${duration}" style="--calendar-event-color:${subjectById(e.categoryId)?.color||e.color||'#aeb5ae'}"><span class="calendar-event-label">${escapeHtml(name)}</span><span class="calendar-event-duration">${duration}</span></div>`;}).join('')}</div></button>`);
+    cells.push(`<button class="calendar-day ${outside?'outside':''} ${key===dateKey(new Date())?'today':''}" data-calendar-date="${key}"><div class="calendar-day-heading"><span class="calendar-day-number">${date.getDate()}</span>${seconds?`<span class="calendar-day-duration" data-heat-level="${calendarHeatLevel(seconds)}" style="background:${calendarHeatColor(seconds)};color:${calendarHeatLevel(seconds)>=6?'#fff':'#203b29'}">${durationLabel(seconds)}</span>`:''}</div>${reviews?`<div class="calendar-day-summary">${reviews}待复习</div>`:''}<div class="calendar-day-events">${records.map((e)=>{const name=eventTitle(e),duration=durationLabel(focusSeconds(e));return`<div class="calendar-event" title="${escapeHtml(name)} · ${duration}" style="--calendar-event-color:${subjectById(e.categoryId)?.color||e.color||'#aeb5ae'}"><span class="calendar-event-label">${escapeHtml(name)}</span><span class="calendar-event-duration">${duration}</span></div>`;}).join('')}</div></button>`);
   }dom.monthCalendar.innerHTML=cells.join('');dom.monthCalendar.querySelectorAll('[data-calendar-date]').forEach((b)=>b.onclick=()=>{state.currentDate=startOfDay(parseDate(b.dataset.calendarDate));closeModal('calendarModal');saveBackup();renderAll();});
 }
 
@@ -797,28 +871,46 @@ function playReminderSound(){if(!state.settings.soundEnabled)return;unlockAudio(
 async function requestNotifications(){if(!('Notification'in window)){window.alert('当前浏览器不支持系统通知。');return;}const permission=await Notification.requestPermission();state.settings.notificationsEnabled=permission==='granted';dom.settingNotificationsEnabled.checked=state.settings.notificationsEnabled;saveBackup();if(permission==='granted')showSystemNotification('通知已启用','计划开始与倒计时结束时会收到系统提醒。',true);else window.alert('通知未获授权，可在浏览器网站权限中重新开启。');}
 async function showSystemNotification(title,body,force=false){if(!('Notification'in window)||Notification.permission!=='granted'||(!force&&!state.settings.notificationsEnabled))return;const options={body,icon:'icon.svg',badge:'icon.svg',tag:`learning-tool-${title}`,renotify:true};try{if('serviceWorker'in navigator){const registration=await navigator.serviceWorker.ready;await registration.showNotification(title,options);return;}new Notification(title,options);}catch(_){try{new Notification(title,options);}catch(__){}}}
 async function installApp(){const prompt=state.installPrompt;if(!prompt){window.alert(location.protocol==='file:'?'请先通过本地服务器或 HTTPS 打开网页，再用 Edge 的“应用 → 安装此站点”安装。':'当前浏览器尚未提供安装入口，可使用浏览器菜单中的“安装此应用”。');return;}await prompt.prompt();state.installPrompt=null;dom.installAppBtn.classList.add('hidden');}
-function clearEvents(){if(!state.events.length||!window.confirm('确认清空全部事件与复习任务？'))return;pushHistory();state.events=[];state.reviews=[];state.focusTasks=[];state.focus=null;state.pendingFocus=null;clearInterval(state.focusTicker);state.focusTicker=null;saveActiveFocus();exitImmersion();closePlanReminder();saveBackup();closeModal('settingsModal');renderAll();}
+function closeFocusPictureInPicture(){state.pipRequest=null;const pip=state.pipWindow;state.pipWindow=null;if(pip&&!pip.closed)pip.close();}
+function clearEvents(){if(!state.events.length||!window.confirm('确认清空全部事件与复习任务？'))return;pushHistory();state.events=[];state.reviews=[];state.focusTasks=[];state.focus=null;state.pendingFocus=null;state.mergeMode=false;state.mergeSelection.clear();clearInterval(state.focusTicker);state.focusTicker=null;saveActiveFocus();closeFocusPictureInPicture();exitImmersion();closePlanReminder();saveBackup();closeModal('settingsModal');renderAll();}
 
 function focusEvents(){return state.events.filter(event=>event.halfZone==='record'||(!event.halfZone&&event.taskType==='focus'));}
 function focusSeconds(event){if(Number.isFinite(event.focusSeconds)&&event.focusSeconds>=0)return event.focusSeconds;const seconds=(event.endSlot-event.startSlot)*60;return Number.isFinite(seconds)?Math.max(0,seconds):0;}
 
+const ORPHAN_STATS_ID='__uncategorized__';
+function statsFilterRoots(){return [...state.categories,...(focusEvents().some(event=>!subjectById(event.categoryId))?[{id:ORPHAN_STATS_ID,name:'未分类 / 已删除学科',children:[]}]:[])];}
 function openStats() {
-  state.statsSubjects=new Set(flattenSubjectOptions().map((s)=>s.id));const today=new Date(),monthStart=new Date(today.getFullYear(),today.getMonth(),1);if(!dom.statsCustomFrom.value)dom.statsCustomFrom.value=dateKey(monthStart);if(!dom.statsCustomTo.value)dom.statsCustomTo.value=dateKey(today);renderStatsFilters();updateStatsRangeUI();openModal('statsModal');renderStats();
+  dom.statsRange.value='day';state.statsSubjects=new Set(statsFilterRoots().flatMap(subjectSubtreeIds));const today=new Date(),monthStart=new Date(today.getFullYear(),today.getMonth(),1);if(!dom.statsCustomFrom.value)dom.statsCustomFrom.value=dateKey(monthStart);if(!dom.statsCustomTo.value)dom.statsCustomTo.value=dateKey(today);renderStatsFilters();updateStatsRangeUI();openModal('statsModal');renderStats();
 }
 function updateStatsRangeUI(){dom.statsCustomRange.classList.toggle('hidden',dom.statsRange.value!=='custom');}
 function flattenSubjectOptions() {
   const result=[];state.categories.forEach((root)=>{result.push({id:root.id,name:root.name,color:root.color,depth:0});(root.children||[]).forEach((second)=>{result.push({id:second.id,name:`${root.name} / ${second.name}`,color:root.color,depth:1});(second.children||[]).forEach((third)=>result.push({id:third.id,name:`${root.name} / ${second.name} / ${third.name}`,color:root.color,depth:2}));});});return result;
 }
-function renderStatsFilters() {
-  dom.statsSubjectFilters.innerHTML=flattenSubjectOptions().map((s)=>`<label class="subject-filter depth-${s.depth}"><input type="checkbox" value="${s.id}" ${state.statsSubjects.has(s.id)?'checked':''}/><span class="subject-dot" style="--subject-color:${s.color}"></span>${escapeHtml(s.name)}</label>`).join('');
-  dom.statsSubjectFilters.querySelectorAll('input').forEach((input)=>input.onchange=()=>{if(input.checked)state.statsSubjects.add(input.value);else state.statsSubjects.delete(input.value);renderStats();});
+function subjectSubtreeIds(node){return [node.id,...(node.children||[]).flatMap(subjectSubtreeIds)];}
+function statsSubjectSelection(node){const ids=subjectSubtreeIds(node),count=ids.filter(id=>state.statsSubjects.has(id)).length;return{checked:count===ids.length,partial:count>0&&count<ids.length};}
+function setStatsSubjectSelected(id,checked){
+  const visit=node=>{if(node.id===id){subjectSubtreeIds(node).forEach(key=>checked?state.statsSubjects.add(key):state.statsSubjects.delete(key));return true;}
+    const found=(node.children||[]).some(visit);if(found){const full=(node.children||[]).every(child=>statsSubjectSelection(child).checked);if(full)state.statsSubjects.add(node.id);else state.statsSubjects.delete(node.id);}return found;};
+  statsFilterRoots().some(visit);
 }
+function renderStatsFilters() {
+  const renderNode=(node,depth=0)=>{
+    const selection=statsSubjectSelection(node),children=node.children||[],open=state.statsExpanded.has(node.id);
+    return `<div class="stats-subject-node depth-${depth}"><div class="stats-subject-row"><input type="checkbox" aria-label="选择${escapeHtml(node.name)}" value="${escapeHtml(node.id)}" ${selection.checked?'checked':''}><button type="button" data-stats-expand="${escapeHtml(node.id)}" aria-expanded="${open}" ${children.length?'':'disabled'}>${children.length?(open?'▾':'▸'):'·'} ${escapeHtml(node.name)}</button></div>${children.length?`<div class="stats-subject-children ${open?'':'hidden'}">${children.map(child=>renderNode(child,depth+1)).join('')}</div>`:''}</div>`;
+  };
+  const roots=statsFilterRoots();dom.statsSubjectFilters.innerHTML=roots.map(node=>renderNode(node)).join('');
+  const nodes=new Map();const collect=node=>{nodes.set(node.id,node);(node.children||[]).forEach(collect);};roots.forEach(collect);
+  dom.statsSubjectFilters.querySelectorAll('input').forEach(input=>{input.indeterminate=statsSubjectSelection(nodes.get(input.value)).partial;input.onchange=()=>{const id=input.value;setStatsSubjectSelected(id,input.checked);renderStatsFilters();renderStats();[...dom.statsSubjectFilters.querySelectorAll('input')].find(el=>el.value===id)?.focus();};});
+  dom.statsSubjectFilters.querySelectorAll('[data-stats-expand]').forEach(button=>button.onclick=()=>{const id=button.dataset.statsExpand;state.statsExpanded.has(id)?state.statsExpanded.delete(id):state.statsExpanded.add(id);renderStatsFilters();[...dom.statsSubjectFilters.querySelectorAll('[data-stats-expand]')].find(el=>el.dataset.statsExpand===id)?.focus();});
+}
+function learningReviewTotals(events){return events.reduce((totals,event)=>{totals[event.taskType==='review'?'review':'learn']+=focusSeconds(event);return totals;},{learn:0,review:0});}
+
 function renderStats() {
-  const all=focusEvents().filter((e)=>(e.subjectPath?.length?e.subjectPath:[e.categoryId]).some((id)=>state.statsSubjects.has(id))),todayKey=dateKey(new Date()),today=all.filter((e)=>e.date===todayKey);
-  const totalSeconds=all.reduce((sum,e)=>sum+focusSeconds(e),0),activeDays=new Set(all.map((e)=>e.date)).size||1;
-  dom.statTotalCount.textContent=all.length;dom.statTotalTime.textContent=durationLabel(totalSeconds);dom.statDailyAverage.textContent=durationLabel(totalSeconds/activeDays);
+  const all=focusEvents().filter(e=>!subjectById(e.categoryId)?state.statsSubjects.has(ORPHAN_STATS_ID):(e.subjectPath?.length?e.subjectPath:[e.categoryId]).some(id=>state.statsSubjects.has(id))),todayKey=dateKey(new Date()),today=all.filter((e)=>e.date===todayKey);
+  const ranged=filterStatsRange(all,dom.statsRange.value),totalSeconds=ranged.reduce((sum,e)=>sum+focusSeconds(e),0),activeDays=new Set(ranged.map((e)=>e.date)).size||1;
+  dom.statTotalCount.textContent=ranged.length;dom.statTotalTime.textContent=durationLabel(totalSeconds);dom.statDailyAverage.textContent=durationLabel(totalSeconds/activeDays);
   dom.statTodayCount.textContent=today.length;dom.statTodayTime.textContent=durationLabel(today.reduce((sum,e)=>sum+focusSeconds(e),0));
-  drawDistributionChart(filterStatsRange(all,dom.statsRange.value));drawMonthlyChart(all);drawYearlyChart(all);
+  const split=learningReviewTotals(today),sum=split.learn+split.review,reviewPercent=sum?Math.round(split.review/sum*1000)/10:0,learnPercent=sum?Math.round((100-reviewPercent)*10)/10:0;dom.statTodaySplit.innerHTML=`<span>学习 <b>${durationLabel(split.learn)}</b> · ${learnPercent}%</span><span>复习 <b>${durationLabel(split.review)}</b> · ${reviewPercent}%</span>`;drawDistributionChart(filterStatsRange(all,dom.statsRange.value));drawMonthlyChart(all);drawYearlyChart(all);
   Object.entries(state.statVisibility).forEach(([key,visible])=>document.querySelector(`[data-stat-section="${key}"]`)?.classList.toggle('stat-hidden',!visible));
 }
 function filterStatsRange(events,range) {
@@ -831,29 +923,55 @@ function filterStatsRange(events,range) {
 }
 function toggleStat(key){state.statVisibility[key]=!state.statVisibility[key];renderStats();}
 function prepareChart(canvasEl) {
-  const dpr=window.devicePixelRatio||1,rect=canvasEl.getBoundingClientRect(),width=Math.max(320,rect.width||canvasEl.width),height=Math.max(180,rect.height||canvasEl.height);
+  const dpr=window.devicePixelRatio||1,rect=canvasEl.getBoundingClientRect(),width=Math.max(1,rect.width||canvasEl.width||320),height=Math.max(180,rect.height||canvasEl.height);
   canvasEl.width=Math.round(width*dpr);canvasEl.height=Math.round(height*dpr);const c=canvasEl.getContext('2d');c.setTransform(dpr,0,0,dpr,0,0);c.clearRect(0,0,width,height);return{c,width,height};
 }
-function drawDistributionChart(events) {
-  const {c,width,height}=prepareChart(dom.distributionChart),totals=state.categories.map((s)=>({s,value:events.filter((e)=>e.categoryId===s.id).reduce((sum,e)=>sum+focusSeconds(e),0)})).filter((x)=>x.value>0);
-  if(!totals.length){drawEmptyChart(c,width,height);return;}if(dom.statsChartType.value==='pie'){drawDistributionPie(c,width,height,totals);return;}const max=Math.max(...totals.map((x)=>x.value));c.font='11px "Segoe UI"';
-  totals.forEach((item,i)=>{const y=28+i*Math.min(36,(height-40)/totals.length),barWidth=Math.max(2,(width-170)*item.value/max);c.fillStyle='#737a73';c.fillText(item.s.name,12,y+7);c.fillStyle=rgba(item.s.color,.82);roundRect(c,86,y-5,barWidth,17,6);c.fill();c.fillStyle='#555';c.fillText(durationLabel(item.value),94+barWidth,y+7);});
+function subjectDurationTotals(events){
+  const groups=new Map();events.forEach(event=>{const id=event.categoryId||'other',subject=subjectById(id)||{id,name:(event.categoryName||'未分类').split('/')[0],color:event.color||'#6b7a72'};if(!groups.has(id))groups.set(id,{s:subject,learn:0,review:0,value:0});const item=groups.get(id),seconds=focusSeconds(event);item[event.taskType==='review'?'review':'learn']+=seconds;item.value+=seconds;});return [...groups.values()].filter(item=>item.value>0);
 }
-function drawDistributionPie(c,width,height,totals){const sum=totals.reduce((value,item)=>value+item.value,0),radius=Math.min(82,height*.36,width*.18),cx=Math.max(radius+22,width*.3),cy=height/2;let angle=-Math.PI/2;totals.forEach((item)=>{const next=angle+item.value/sum*Math.PI*2;c.fillStyle=rgba(item.s.color,.88);c.beginPath();c.moveTo(cx,cy);c.arc(cx,cy,radius,angle,next);c.closePath();c.fill();angle=next;});c.fillStyle='#fff';c.beginPath();c.arc(cx,cy,radius*.48,0,Math.PI*2);c.fill();c.fillStyle='#2d332e';c.textAlign='center';c.font='700 14px "Segoe UI"';c.fillText(durationLabel(sum),cx,cy+5);c.textAlign='left';c.font='11px "Segoe UI"';totals.forEach((item,index)=>{const x=Math.min(width-145,cx+radius+28),y=32+index*28;c.fillStyle=item.s.color;c.beginPath();c.arc(x,y-4,5,0,Math.PI*2);c.fill();c.fillStyle='#555';c.fillText(`${item.s.name} ${Math.round(item.value/sum*100)}% · ${durationLabel(item.value)}`,x+12,y);});}
+function reviewFill(c,color){const tile=document.createElement('canvas');tile.width=8;tile.height=8;const pen=tile.getContext('2d');pen.fillStyle=rgba(color,.2);pen.fillRect(0,0,8,8);pen.strokeStyle=rgba(color,.8);pen.lineWidth=1.5;pen.beginPath();pen.moveTo(0,8);pen.lineTo(8,0);pen.stroke();return c.createPattern(tile,'repeat')||rgba(color,.35);}
+function drawDistributionChart(events) {
+  const totals=subjectDurationTotals(events);dom.distributionChart.style.height=`${Math.max(220,totals.length*36+40)}px`;
+  const {c,width,height}=prepareChart(dom.distributionChart);
+  dom.distributionChart.title='';dom.distributionChart.onmousemove=event=>{
+    const rect=dom.distributionChart.getBoundingClientRect(),x=(event.clientX-rect.left)*width/rect.width,y=(event.clientY-rect.top)*height/rect.height;
+    let item;
+    if(dom.statsChartType.value==='pie'){
+      const radius=Math.min(82,height*.36,width*.18),dx=x-Math.max(radius+22,width*.3),dy=y-height/2,distance=Math.hypot(dx,dy);
+      if(distance>=radius*.48&&distance<=radius){const angle=(Math.atan2(dy,dx)+Math.PI/2+Math.PI*2)%(Math.PI*2),total=totals.reduce((sum,t)=>sum+t.value,0);let end=0;item=totals.find(t=>{end+=t.value/total*Math.PI*2;return angle<=end;});}
+    }else{const max=Math.max(1,...totals.map(t=>t.value));item=totals.find((t,i)=>y>=23+i*36&&y<=40+i*36&&x>=86&&x<=86+(width-190)*t.value/max);}
+    dom.distributionChart.title=item?`${item.s.name}：学习 ${durationLabel(item.learn)}，复习 ${durationLabel(item.review)}`:'';
+  };dom.distributionChart.onmouseleave=()=>{dom.distributionChart.title='';};
+  dom.distributionDetails.innerHTML=totals.map(item=>{const label=`${item.s.name}：学习 ${durationLabel(item.learn)}，复习 ${durationLabel(item.review)}`;return `<div class="distribution-item" style="--subject-color:${item.s.color}"><span>${escapeHtml(item.s.name)}</span><div class="distribution-track" tabindex="0" aria-label="${escapeHtml(label)}"><span class="distribution-learn" style="width:${item.learn/item.value*100}%"></span><span class="distribution-review" style="width:${item.review/item.value*100}%"></span><span class="distribution-tooltip" role="tooltip">${escapeHtml(label)}</span></div><b>${durationLabel(item.value)}</b></div>`;}).join('');
+  if(!totals.length){drawEmptyChart(c,width,height);return;}
+  c.textAlign='left';c.textBaseline='alphabetic';
+  if(dom.statsChartType.value==='pie'){drawDistributionPie(c,width,height,totals);return;}
+  const max=Math.max(...totals.map(item=>item.value));c.font='11px "Segoe UI"';
+  totals.forEach((item,i)=>{const y=28+i*36,barWidth=Math.max(2,(width-190)*item.value/max),learnWidth=barWidth*item.learn/item.value;c.fillStyle='#333';c.fillText(fitText(c,item.s.name,72),12,y+7);c.fillStyle=item.s.color;c.fillRect(86,y-5,learnWidth,17);c.fillStyle=reviewFill(c,item.s.color);c.fillRect(86+learnWidth,y-5,barWidth-learnWidth,17);c.fillStyle='#333';c.fillText(durationLabel(item.value),94+barWidth,y+7);});
+}
+function drawDistributionPie(c,width,height,totals){
+  const sum=totals.reduce((value,item)=>value+item.value,0),radius=Math.min(82,height*.36,width*.18),cx=Math.max(radius+22,width*.3),cy=height/2;let angle=-Math.PI/2;
+  totals.forEach(item=>{for(const kind of ['learn','review']){if(!item[kind])continue;const next=angle+item[kind]/sum*Math.PI*2;c.fillStyle=kind==='review'?reviewFill(c,item.s.color):item.s.color;c.beginPath();c.moveTo(cx,cy);c.arc(cx,cy,radius,angle,next);c.closePath();c.fill();angle=next;}});
+  c.fillStyle='#fff';c.beginPath();c.arc(cx,cy,radius*.48,0,Math.PI*2);c.fill();c.fillStyle='#333';c.textAlign='center';c.font='700 14px "Segoe UI"';c.fillText(durationLabel(sum),cx,cy+5);c.textAlign='left';c.font='11px "Segoe UI"';
+  totals.forEach((item,index)=>{const x=Math.min(width-145,cx+radius+28),y=32+index*28;c.fillStyle=item.s.color;c.fillRect(x,y-10,9,9);c.fillStyle='#333';c.fillText(fitText(c,`${item.s.name} ${Math.round(item.value/sum*100)}% · ${durationLabel(item.value)}`,width-x-16),x+12,y);});
+}
+
 function drawMonthlyChart(events) {
   const now=new Date(),days=new Date(now.getFullYear(),now.getMonth()+1,0).getDate(),values=Array.from({length:days},(_,i)=>events.filter((e)=>e.date===dateKey(new Date(now.getFullYear(),now.getMonth(),i+1))).reduce((s,e)=>s+focusSeconds(e)/60,0));
-  drawLineChart(dom.monthlyChart,values,values.map((_,i)=>String(i+1)),5);
+  drawLineChart(dom.monthlyChart,values,values.map((_,i)=>String(i+1)),1,60);
 }
 function drawYearlyChart(events) {
   const year=new Date().getFullYear(),values=Array.from({length:12},(_,i)=>events.filter((e)=>parseDate(e.date).getFullYear()===year&&parseDate(e.date).getMonth()===i).reduce((s,e)=>s+focusSeconds(e)/3600,0));
-  drawLineChart(dom.yearlyChart,values,values.map((_,i)=>`${i+1}月`),1);
+  drawLineChart(dom.yearlyChart,values,values.map((_,i)=>`${i+1}月`),1,3600);
 }
-function drawLineChart(canvasEl,values,labels,labelEvery) {
-  const {c,width,height}=prepareChart(canvasEl),padX=34,padY=24,w=width-padX-12,h=height-padY-30,max=Math.max(1,...values);
+function drawLineChart(canvasEl,values,labels,labelEvery,secondsPerUnit=60) {
+  canvasEl.style.minWidth=`${values.length*(secondsPerUnit===3600?82:64)+46}px`;canvasEl.setAttribute('aria-label',values.map((value,i)=>`${labels[i]}${secondsPerUnit===60?'日':''} ${durationLabel(value*secondsPerUnit)}`).join('；'));
+  const {c,width,height}=prepareChart(canvasEl),padX=42,padY=24,w=width-padX-42,h=height-padY-30,max=Math.max(1,...values);
   c.strokeStyle='#e4e7e2';c.lineWidth=1;for(let i=0;i<=4;i++){const y=padY+h*i/4;c.beginPath();c.moveTo(padX,y);c.lineTo(width-10,y);c.stroke();}
   c.strokeStyle='#2f6b4f';c.lineWidth=2;c.beginPath();values.forEach((value,i)=>{const x=padX+(values.length===1?0:i/(values.length-1))*w,y=padY+h-value/max*h;if(i)c.lineTo(x,y);else c.moveTo(x,y);});c.stroke();
   c.fillStyle='#2f6b4f';values.forEach((value,i)=>{const x=padX+(values.length===1?0:i/(values.length-1))*w,y=padY+h-value/max*h;c.beginPath();c.arc(x,y,2.5,0,Math.PI*2);c.fill();});
-  c.fillStyle='#838982';c.font='9px "Segoe UI"';c.textAlign='center';labels.forEach((label,i)=>{if(i%labelEvery===0){const x=padX+(labels.length===1?0:i/(labels.length-1))*w;c.fillText(label,x,height-8);}});
+  c.fillStyle='#333';c.font='bold 11px "Segoe UI"';c.textAlign='center';values.forEach((value,i)=>{const x=padX+i/(values.length-1)*w,y=padY+h-value/max*h;c.fillText(durationLabel(value*secondsPerUnit),x,y-9);});
+  c.fillStyle='#555';c.font='9px "Segoe UI"';c.textAlign='center';labels.forEach((label,i)=>{if(i%labelEvery===0){const x=padX+(labels.length===1?0:i/(labels.length-1))*w;c.fillText(label,x,height-8);}});
 }
 function drawEmptyChart(c,width,height){c.fillStyle='#9aa09a';c.font='12px "Segoe UI"';c.textAlign='center';c.fillText('暂无专注记录',width/2,height/2);}
 
@@ -917,7 +1035,7 @@ function taskStatusLabel(status){return{running:'进行中',paused:'未完成',c
 function ensureFocusImmersionFields(focus=state.focus){
   if(!focus)return null;
   const source=focusSource(focus),previous=focus.immersiveFields||taskById(focus.taskId)?.fields||{};
-  focus.immersiveFields={eventName:previous.eventName??previous.knowledgePoint??(source?eventTitle(source):''),materialLocation:previous.materialLocation??focus.reviewStartPoint??focus.planStartPoint??source?.materialLocation??'',summary:previous.summary??'',notes:previous.notes??focus.liveNotes??source?.notes??'',leftover:previous.leftover??source?.leftover??'',actionType:previous.actionType??source?.actionTypes?.[0]??(focus.taskType==='review'?'review':'reading'),mastery:previous.mastery??source?.mastery??'unknown'};
+  const actionType=previous.actionType??source?.actionTypes?.[0]??(focus.taskType==='review'?'review':'video');focus.immersiveFields={eventName:previous.eventName??previous.knowledgePoint??(source?eventTitle(source):''),materialLocation:previous.materialLocation??focus.reviewStartPoint??focus.planStartPoint??source?.materialLocation??'',summary:previous.summary??'',notes:previous.notes??focus.liveNotes??source?.notes??'',leftover:previous.leftover??source?.leftover??'',actionType,actionTypes:Array.isArray(previous.actionTypes)?[...previous.actionTypes]:[...(source?.actionTypes||[actionType])],mastery:previous.mastery??source?.mastery??'unknown'};
   focus.liveNotes=focus.immersiveFields.notes;return focus.immersiveFields;
 }
 function ensureFocusTask(focus=state.focus){
@@ -933,7 +1051,8 @@ function ensureFocusTask(focus=state.focus){
 }
 function renderUnfinishedTasks(){
   const tasks=state.focusTasks.filter(task=>task.status==='paused');dom.unfinishedTaskPanel.classList.toggle('hidden',!tasks.length);
-  dom.unfinishedTaskList.innerHTML=tasks.map(task=>`<article class="unfinished-task"><strong>${escapeHtml(task.fields.eventName||task.categoryName+'任务')}</strong><small>${task.taskType==='review'?'复习':'学习'} · ${escapeHtml(task.categoryName)} · 累计 ${clockLabel(task.totalSeconds)} · ${task.segmentEventIds.length} 段</small>${task.fields.leftover?`<p>待完成：${escapeHtml(task.fields.leftover)}</p>`:''}<div class="unfinished-task-actions"><button class="tool-btn primary" data-task-resume="${task.id}" ${state.focus||state.pendingFocus?'disabled':''}>继续</button><button class="tool-btn" data-task-finish="${task.id}" ${state.focus||state.pendingFocus?'disabled':''}>标记完成</button><button class="tool-btn" data-task-abandon="${task.id}">放弃</button></div></article>`).join('');
+  const markup=tasks.map(task=>`<article class="unfinished-task"><strong>${escapeHtml(task.fields.eventName||task.categoryName+'任务')}</strong><small>${task.taskType==='review'?'复习':'学习'} · ${escapeHtml(task.categoryName)} · 累计 ${clockLabel(task.totalSeconds)} · ${task.segmentEventIds.length} 段</small>${task.fields.leftover?`<p>待完成：${escapeHtml(task.fields.leftover)}</p>`:''}<div class="unfinished-task-actions"><button class="tool-btn primary" data-task-resume="${task.id}" ${state.focus||state.pendingFocus?'disabled':''}>继续</button><button class="tool-btn" data-task-finish="${task.id}" ${state.focus||state.pendingFocus?'disabled':''}>标记完成</button><button class="tool-btn" data-task-abandon="${task.id}">放弃</button></div></article>`).join('');
+  if(state.unfinishedMarkup===markup)return;state.unfinishedMarkup=markup;dom.unfinishedTaskList.innerHTML=markup;
   dom.unfinishedTaskList.querySelectorAll('[data-task-resume]').forEach(button=>button.onclick=()=>resumeFocusTask(button.dataset.taskResume));
   dom.unfinishedTaskList.querySelectorAll('[data-task-finish]').forEach(button=>button.onclick=()=>openTaskCompletion(button.dataset.taskFinish));
   dom.unfinishedTaskList.querySelectorAll('[data-task-abandon]').forEach(button=>button.onclick=()=>abandonFocusTask(button.dataset.taskAbandon));
@@ -944,7 +1063,7 @@ function syncTaskRecords(task){
   if(records.some(event=>Object.hasOwn(event,'leftover')&&event.leftover!==(fields.leftover||''))){delete task.leftoverCompletedAt;records.forEach(event=>delete event.leftoverCompletedAt);}
   if(state.focus?.taskId===task.id){Object.assign(state.focus,{categoryId:task.categoryId,categoryName:task.categoryName,subjectPath:task.subjectPath,color:task.color});state.focus.immersiveFields=clone(fields);state.focus.liveNotes=fields.notes||'';saveActiveFocus();}
   state.events.filter(event=>event.focusTaskId===task.id).forEach(event=>{
-    Object.assign(event,{categoryId:task.categoryId,categoryName:task.categoryName,subjectPath:[...(task.subjectPath||[task.categoryId])],color:task.color,eventName:fields.eventName||task.categoryName+'任务',materialLocation:fields.materialLocation||'',textContent:fields.summary||'',notes:fields.notes||'',leftover:fields.leftover||'',mastery:fields.mastery||'unknown',actionTypes:[fields.actionType||(task.taskType==='review'?'review':'reading')],taskStatus:task.status});
+    const actionTypes=Array.isArray(fields.actionTypes)&&fields.actionTypes.length?[...fields.actionTypes]:[fields.actionType||(task.taskType==='review'?'review':'video')];Object.assign(event,{categoryId:task.categoryId,categoryName:task.categoryName,subjectPath:[...(task.subjectPath||[task.categoryId])],color:task.color,eventName:fields.eventName||task.categoryName+'任务',materialLocation:fields.materialLocation||'',textContent:fields.summary||'',notes:fields.notes||'',leftover:fields.leftover||'',mastery:fields.mastery||'unknown',actionTypes,taskStatus:task.status});
   });
   records.forEach(event=>{const owner=leftoverOwner(event),resolved=owner.leftoverCompletedAt||(owner.focusTaskId===task.id?task.leftoverCompletedAt:null);if(resolved)event.leftoverCompletedAt=resolved;else delete event.leftoverCompletedAt;});
   if(task.reviewSourceEventId){const source=state.events.find(event=>event.id===task.reviewSourceEventId);if(source){state.reviews.filter(review=>review.sourceEventId===source.id).forEach(review=>{const mastery=review.mastery;Object.assign(review,reviewSnapshot(source));if(review.completed)review.mastery=mastery;});syncPausedReviewSource(source);}}
@@ -960,6 +1079,8 @@ function recomputeTaskDuration(task){
 function pauseFocus(endedAt=Date.now()){
   if(!state.focus)return null;
   const focus=state.focus,task=ensureFocusTask(focus),fields=ensureFocusImmersionFields(focus);
+  const deadline=focus.type==='countdown'?Number(focus.startedAt)+Math.max(0,focus.durationSeconds-(Number(focus.elapsedBefore)||0))*1000:Infinity;
+  endedAt=Math.max(Number(focus.startedAt),Math.min(Number(endedAt),deadline));
   pushHistory();task.fields=clone(fields);
   // A segment is written once. Break time is never represented by an event.
   if(task.lastSegmentId!==focus.segmentId){
@@ -975,7 +1096,7 @@ function pauseFocus(endedAt=Date.now()){
     task.totalSeconds=(Number(task.totalSeconds)||0)+Math.max(0,(end-start)/1000);task.lastSegmentId=focus.segmentId;task.lastPausedAt=new Date(end).toISOString();
   }
   task.status='paused';syncTaskRecords(task);clearInterval(state.focusTicker);state.focusTicker=null;state.focus=null;
-  if(state.pipWindow&&!state.pipWindow.closed)state.pipWindow.close();state.pipWindow=null;exitImmersion();
+  closeFocusPictureInPicture();exitImmersion();
   state.currentDate=startOfDay(new Date(endedAt));validateConflicts();saveBackup();saveActiveFocus();renderAll();return task;
 }
 function resumeFocusTask(id){
@@ -1063,7 +1184,7 @@ function renderFocus(){
   dom.focusClock.textContent=clockLabel(shown);const fields=ensureFocusImmersionFields();
   dom.focusSubjectLabel.textContent=`${fields.eventName||state.focus.categoryName} · ${state.focus.taskType==='review'?'复习':'学习'} · ${state.focus.type==='countdown'?'倒计时':'累计计时'}`;
   if(document.activeElement!==dom.focusLiveNote)dom.focusLiveNote.value=fields.notes||'';syncImmersionInputs(fields);
-  dom.immersionClock.textContent=clockLabel(shown);dom.immersionSubject.textContent=state.focus.categoryName;
+  dom.immersionClock.textContent=clockLabel(shown);dom.immersionSubject.textContent=state.focus.categoryName;dom.immersionTotal.textContent=`本任务累计专注 ${clockLabel(elapsed)}`;
   dom.immersionMode.textContent=`${state.focus.taskType==='review'?'复习':'学习'} · ${state.focus.type==='countdown'?'倒计时':'累计专注'}`;
   renderImmersionReviewContext();renderImmersionExtras();renderPictureInPicture(shown);
 }
@@ -1077,7 +1198,7 @@ function updateFocusLiveNote(value){
 }
 
 function updateFocusImmersionFields(){
-  if(!state.focus)return;const fields=ensureFocusImmersionFields();Object.assign(fields,{eventName:dom.immersionEventName.value.trim(),materialLocation:dom.immersionMaterialLocation.value.trim(),summary:dom.immersionSummary.value.trim(),notes:dom.immersionLiveNote.value,leftover:dom.immersionLeftover.value.trim(),actionType:dom.immersionActionType.value,mastery:dom.immersionMastery.value});
+  if(!state.focus)return;const fields=ensureFocusImmersionFields(),actionType=dom.immersionActionType.value;Object.assign(fields,{eventName:dom.immersionEventName.value.trim(),materialLocation:dom.immersionMaterialLocation.value.trim(),summary:dom.immersionSummary.value.trim(),notes:dom.immersionLiveNote.value,leftover:dom.immersionLeftover.value.trim(),actionType,actionTypes:[actionType],mastery:dom.immersionMastery.value});
   state.focus.liveNotes=fields.notes;if(document.activeElement!==dom.focusLiveNote)dom.focusLiveNote.value=fields.notes;const task=taskById(state.focus.taskId);if(task)task.fields=clone(fields);saveBackup();saveActiveFocus();
 }
 
@@ -1088,7 +1209,7 @@ function renderImmersionReviewContext(){
   dom.immersionReviewCard.innerHTML=`<div class="immersion-review-top">${review?`第 ${review.reviewNumber} 次复习 · ${reviewIntervalLabel(review,source)}`:'学习计划'} · 暂停不会标记完成</div><h3>${escapeHtml(eventTitle(source))}</h3><div class="immersion-review-tags">${(source.actionTypes||[]).map(type=>`<span>${escapeHtml(ACTION_TYPE_LABELS[type]||type)}</span>`).join('')}<span>${escapeHtml(source.materialLocation||'未填写资料定位')}</span></div>`;
 }
 
-function applyImmersionSettings(){const s=state.settings;dom.immersionBackdrop.className=`immersion-backdrop theme-${s.immersionTheme}`;dom.immersionBackdrop.style.setProperty('--immersion-opacity',s.immersionOpacity);dom.immersionOverlay.style.setProperty('--immersion-opacity',s.immersionOpacity);dom.immersionBackdrop.style.backgroundImage=s.immersionTheme==='custom'&&s.immersionBackground?`url("${String(s.immersionBackground).replaceAll('\\','\\\\').replaceAll('"','\\"')}")`:'';dom.immersionCountdown.style.setProperty('--countdown-size',`${clamp(Number(s.countdownSize)||30,18,64)}px`);dom.immersionCountdown.classList.remove('position-top','position-bottom');if(s.countdownPosition==='top')dom.immersionCountdown.classList.add('position-top');if(s.countdownPosition==='bottom')dom.immersionCountdown.classList.add('position-bottom');renderImmersionExtras();}
+function applyImmersionSettings(){const s=state.settings;dom.immersionContent.classList.toggle('swapped',Boolean(s.immersionSwapped));dom.immersionSwapBtn.setAttribute('aria-pressed',String(Boolean(s.immersionSwapped)));dom.immersionBackdrop.className=`immersion-backdrop theme-${s.immersionTheme}`;dom.immersionBackdrop.style.setProperty('--immersion-opacity',s.immersionOpacity);dom.immersionOverlay.style.setProperty('--immersion-opacity',s.immersionOpacity);dom.immersionBackdrop.style.backgroundImage=s.immersionTheme==='custom'&&s.immersionBackground?`url("${String(s.immersionBackground).replaceAll('\\','\\\\').replaceAll('"','\\"')}")`:'';dom.immersionCountdown.style.setProperty('--countdown-size',`${clamp(Number(s.countdownSize)||30,18,64)}px`);dom.immersionCountdown.classList.remove('position-top','position-bottom');if(s.countdownPosition==='top')dom.immersionCountdown.classList.add('position-top');if(s.countdownPosition==='bottom')dom.immersionCountdown.classList.add('position-bottom');renderImmersionExtras();}
 function renderImmersionExtras() {
   const s=state.settings;if(s.showCountdown&&s.countdownDate){const days=Math.ceil((parseDate(s.countdownDate)-startOfDay(new Date()))/86400000);dom.immersionCountdown.textContent=`${s.countdownName||'倒数日'} · ${days>=0?days+' 天':Math.abs(days)+' 天前'}`;dom.immersionCountdown.classList.remove('hidden');}else dom.immersionCountdown.classList.add('hidden');
   if(s.showQuote){if(!dom.immersionQuote.textContent)dom.immersionQuote.textContent=QUOTES[Math.floor(Math.random()*QUOTES.length)];dom.immersionQuote.classList.remove('hidden');}else dom.immersionQuote.classList.add('hidden');
@@ -1097,8 +1218,25 @@ function supportsFocusPictureInPicture(){const api=window.documentPictureInPictu
 function syncFocusPictureInPictureAvailability(){const supported=supportsFocusPictureInPicture();dom.immersionPipBtn.hidden=!supported;dom.immersionPipBtn.classList.toggle('hidden',!supported);dom.immersionPipBtn.setAttribute('aria-hidden',String(!supported));return supported;}
 function enterImmersion(){if(!state.focus)return;applyImmersionSettings();syncFocusPictureInPictureAvailability();dom.immersionOverlay.classList.remove('hidden');}
 function exitImmersion(){dom.immersionOverlay.classList.add('hidden');}
-async function openFocusPictureInPicture(){if(!state.focus||!syncFocusPictureInPictureAvailability())return;try{if(state.pipWindow&&!state.pipWindow.closed){state.pipWindow.focus();return;}const pip=await window.documentPictureInPicture.requestWindow({width:440,height:300});state.pipWindow=pip;pip.document.head.innerHTML='<meta charset="utf-8"><title>专注计时</title><style>body{margin:0;display:grid;place-items:center;min-height:100vh;color:#203127;background:#f4f7f4;font-family:"Segoe UI","Microsoft YaHei",sans-serif}.pip-card{width:calc(100% - 28px);padding:20px;text-align:center;background:#fff;border:1px solid #dfe7e1;border-radius:18px;box-sizing:border-box;box-shadow:0 18px 48px rgba(30,50,38,.12)}small{color:#68756d}strong{display:block;margin:12px 0 4px;font-size:42px;font-variant-numeric:tabular-nums}h2{margin:0;font-size:16px}.actions{display:flex;gap:8px;margin-top:16px}.actions button{flex:1;min-height:38px;border:1px solid #cdd8d0;border-radius:9px;background:#fff}.actions .primary{color:#fff;background:#2f6b4f;border-color:#2f6b4f}</style>';pip.document.body.innerHTML='<main class="pip-card"><small id="pipMode"></small><strong id="pipClock">00:00:00</strong><h2 id="pipSubject"></h2><div class="actions"><button id="pipBack">返回沉浸界面</button><button id="pipPause">暂停</button><button id="pipStop" class="primary">完成 / 结束</button></div></main>';pip.document.getElementById('pipBack').onclick=()=>{pip.close();enterImmersion();};pip.document.getElementById('pipPause').onclick=()=>pauseFocus();pip.document.getElementById('pipStop').onclick=()=>finishFocus(false);pip.addEventListener('pagehide',()=>{if(state.pipWindow===pip)state.pipWindow=null;});exitImmersion();tickFocus();}catch(_){dom.immersionPipBtn.hidden=true;dom.immersionPipBtn.classList.add('hidden');dom.immersionPipBtn.setAttribute('aria-hidden','true');}}
-function renderPictureInPicture(shown){const pip=state.pipWindow;if(!pip||pip.closed)return;const clock=pip.document.getElementById('pipClock'),subject=pip.document.getElementById('pipSubject'),mode=pip.document.getElementById('pipMode');if(clock)clock.textContent=clockLabel(shown);if(subject)subject.textContent=state.focus?.categoryName||'';if(mode)mode.textContent=`${state.focus?.taskType==='review'?'复习':'学习'} · ${state.focus?.type==='countdown'?'倒计时':'正计时'}`;}
+async function openFocusPictureInPicture(){
+  if(!state.focus||!syncFocusPictureInPictureAvailability())return;
+  if(state.pipWindow&&!state.pipWindow.closed){state.pipWindow.focus();return;}
+  if(state.pipRequest)return;
+  const request={focus:state.focus};state.pipRequest=request;let pip;
+  try{
+    pip=await window.documentPictureInPicture.requestWindow({width:200,height:150,disallowReturnToOpener:true,preferInitialWindowPlacement:true});
+    if(state.focus!==request.focus||state.pipRequest!==request){pip.close();return;}
+    state.pipWindow=pip;
+    pip.document.head.innerHTML='<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>专注计时</title><style>*{box-sizing:border-box}body{margin:0;color:#203127;background:#f4f7f4;font-family:"Segoe UI","Microsoft YaHei",sans-serif}.pip-card{height:100vh;min-height:110px;padding:6px 8px;display:grid;grid-template-rows:1fr auto 1fr;gap:4px;text-align:center}strong{align-self:end;font-size:clamp(23px,15vw,30px);font-variant-numeric:tabular-nums;line-height:1.15}h2{margin:0;font-size:12px;line-height:1.2;overflow-wrap:anywhere}.actions{display:flex;justify-content:center;align-items:start;gap:10px}.actions button{width:36px;height:30px;padding:0;font-size:19px;border:1px solid #bacbbb;border-radius:7px;background:#fff;color:#203127}.actions .primary{color:#fff;background:#2f6b4f}</style>';pip.document.body.innerHTML='<main class="pip-card"><strong id="pipClock">00:00:00</strong><h2 id="pipSubject"></h2><div class="actions"><button id="pipBack" title="返回沉浸界面" aria-label="返回沉浸界面">↗</button><button id="pipPause" title="暂停，稍后继续" aria-label="暂停">Ⅱ</button><button id="pipStop" class="primary" title="完成 / 结束计时" aria-label="完成 / 结束计时">✓</button></div></main>';
+    pip.document.getElementById('pipBack').onclick=()=>{pip.close();window.focus?.();enterImmersion();};
+    pip.document.getElementById('pipPause').onclick=()=>pauseFocus();pip.document.getElementById('pipStop').onclick=()=>finishFocus(false);
+    pip.addEventListener('pagehide',()=>{if(state.pipWindow===pip)state.pipWindow=null;});exitImmersion();tickFocus();
+  }catch(_){
+    if(pip&&!pip.closed)pip.close();if(state.pipWindow===pip)state.pipWindow=null;
+    if(state.focus===request.focus)window.alert('小窗打开失败，请重试或检查浏览器支持；当前计时不受影响。');
+  }finally{if(state.pipRequest===request)state.pipRequest=null;}
+}
+function renderPictureInPicture(shown){const pip=state.pipWindow;if(!pip||pip.closed)return;const clock=pip.document.getElementById('pipClock'),subject=pip.document.getElementById('pipSubject'),mode=pip.document.getElementById('pipMode');if(clock)clock.textContent=clockLabel(shown);if(subject){const name=(state.focus?.categoryName||'').split('/').slice(0,2).map(part=>part.trim()).join(' / ');subject.textContent=name;subject.title=state.focus?.categoryName||'';}if(mode)mode.textContent=`${state.focus?.taskType==='review'?'复习':'学习'} · ${state.focus?.type==='countdown'?'倒计时':'正计时'}`;}
 function finishFocus(automatic){
   if(!state.focus)return;
   const focus=state.focus,end=automatic?Math.min(Date.now(),focus.startedAt+Math.max(0,focus.durationSeconds-(focus.elapsedBefore||0))*1000):Date.now(),task=pauseFocus(end);
@@ -1123,11 +1261,12 @@ function normalizeReviewData(review){const number=Math.max(1,Number(review.revie
 function normalizeEventData(event){return{...event,date:normalizeDate(event.date),eventName:eventTitle(event),textContent:event.textContent||'',notes:event.notes||''};}
 
 function normalizeTaskData(task){
-  return {...task,totalSeconds:Math.max(0,Number(task.totalSeconds)||0),segmentEventIds:Array.isArray(task.segmentEventIds)?task.segmentEventIds:[],fields:{eventName:'',materialLocation:'',summary:'',notes:'',leftover:'',actionType:task.taskType==='review'?'review':'reading',mastery:'unknown',...(task.fields||{})}};
+  const fields={eventName:'',materialLocation:'',summary:'',notes:'',leftover:'',actionType:task.taskType==='review'?'review':'reading',mastery:'unknown',...(task.fields||{})};if(!Array.isArray(fields.actionTypes)||!fields.actionTypes.length)fields.actionTypes=[fields.actionType];return {...task,totalSeconds:Math.max(0,Number(task.totalSeconds)||0),segmentEventIds:Array.isArray(task.segmentEventIds)?task.segmentEventIds:[],fields};
 }
 function restore(data){
   clearInterval(state.focusTicker);state.focusTicker=null;state.pendingFocus=null;
-  if(state.pipWindow&&!state.pipWindow.closed)state.pipWindow.close();state.pipWindow=null;exitImmersion();
+  state.mergeMode=false;state.mergeSelection.clear();dom.eventMergeName.value='';
+  closeFocusPictureInPicture();exitImmersion();
   state.currentDate=startOfDay(new Date(data.currentDate));state.settings={...clone(defaultSettings),...clone(data.settings)};
   state.categories=clone(data.categories);state.events=clone(data.events).map(normalizeEventData);state.reviews=clone(data.reviews).map(normalizeReviewData);
   state.focusTasks=(data.focusTasks||[]).map(normalizeTaskData);state.focus=data.activeFocus?clone(data.activeFocus):null;
@@ -1155,11 +1294,11 @@ function exportData(){const data={version:DATA_VERSION,exportedAt:new Date().toI
 
 function importData(){const file=dom.importInput.files?.[0];if(!file)return;const reader=new FileReader();reader.onload=()=>{try{const data=JSON.parse(String(reader.result));if(!window.confirm('导入会覆盖当前数据，是否继续？'))return;pushHistory();restore({currentDate:data.currentDate||new Date().toISOString(),settings:data.settings||defaultSettings,categories:data.categories?.length?data.categories:defaultCategories,events:data.events||[],reviews:data.reviews||[],focusTasks:data.focusTasks||[],activeFocus:data.activeFocus||null});}catch(_){window.alert('导入失败：文件格式无效。');}};reader.readAsText(file);dom.importInput.value='';}
 function exportImage(){
-  const width=1400,header=360,target=createLayout(width,54,header),output=document.createElement('canvas');output.width=width;output.height=target.height+24;const c=output.getContext('2d'),records=currentEvents().filter((event)=>event.halfZone==='record'),totalSeconds=records.reduce((sum,event)=>sum+focusSeconds(event),0),pending=state.reviews.filter((review)=>review.reviewDate===currentDateKey()&&!review.completed&&!review.abandoned).length;
-  c.fillStyle='#fff';c.fillRect(0,0,output.width,output.height);c.fillStyle='#20231f';c.font='800 34px "Segoe UI","Microsoft YaHei"';c.fillText('今日学习日报',42,54);c.fillStyle='#74786f';c.font='15px "Segoe UI"';c.fillText(`${state.currentDate.getFullYear()}年${dateLabel(state.currentDate)}`,43,82);
-  const metrics=[['学习总时长',durationLabel(totalSeconds)],['记录事件',`${records.length} 项`],['待复习',`${pending} 项`]];metrics.forEach(([label,value],index)=>{const x=42+index*225;c.fillStyle='#f5f5f0';roundRect(c,x,112,205,96,16);c.fill();c.fillStyle='#74786f';c.font='12px "Segoe UI"';c.fillText(label,x+18,141);c.fillStyle='#20231f';c.font='800 26px "Segoe UI"';c.fillText(value,x+18,181);});
-  const distribution=new Map();records.forEach((event)=>{const subject=subjectById(event.categoryId),key=subject?.id||'other',item=distribution.get(key)||{name:subject?.name||'未分类',color:subject?.color||event.color||'#88928b',seconds:0};item.seconds+=focusSeconds(event);distribution.set(key,item);});const items=[...distribution.values()],sum=items.reduce((value,item)=>value+item.seconds,0),cx=930,cy=161,radius=82;c.lineWidth=28;let angle=-Math.PI/2;if(sum){items.forEach((item)=>{const next=angle+item.seconds/sum*Math.PI*2;c.strokeStyle=item.color;c.beginPath();c.arc(cx,cy,radius,angle,next);c.stroke();angle=next;});}else{c.strokeStyle='#e5e7e2';c.beginPath();c.arc(cx,cy,radius,0,Math.PI*2);c.stroke();}c.fillStyle='#20231f';c.textAlign='center';c.font='800 21px "Segoe UI"';c.fillText(durationLabel(totalSeconds),cx,158);c.fillStyle='#74786f';c.font='11px "Segoe UI"';c.fillText('记录区总时长',cx,178);c.textAlign='left';items.slice(0,6).forEach((item,index)=>{const x=1060,y=125+index*27;c.fillStyle=item.color;c.beginPath();c.arc(x,y-4,5,0,Math.PI*2);c.fill();c.fillStyle='#3d443f';c.font='12px "Segoe UI"';c.fillText(`${item.name}  ${sum?Math.round(item.seconds/sum*100):0}%`,x+13,y);});
-  c.fillStyle='#20231f';c.font='800 17px "Segoe UI"';c.fillText('学习时间轴',42,287);c.fillStyle='#74786f';c.font='11px "Segoe UI"';c.fillText('箭头颜色代表学科；虚线代表复习任务',42,309);c.textAlign='center';c.font='800 12px "Segoe UI"';c.fillText('计划区',target.planWidth/2,348);c.fillText('记录区',target.planWidth+(target.width-target.planWidth)/2,348);drawTimeline(c,target,{exportMode:true});
+  const width=1400,header=360,target=createLayout(width,54,header),output=document.createElement('canvas'),scale=2;output.width=width*scale;output.height=(target.height+24)*scale;const c=output.getContext('2d');c.setTransform(scale,0,0,scale,0,0);c.imageSmoothingEnabled=true;c.imageSmoothingQuality='high';const records=currentEvents().filter((event)=>event.halfZone==='record'),totalSeconds=records.reduce((sum,event)=>sum+focusSeconds(event),0),pending=state.reviews.filter((review)=>review.reviewDate===currentDateKey()&&!review.completed&&!review.abandoned).length;
+  c.fillStyle='#fff';c.fillRect(0,0,output.width,output.height);c.fillStyle='#20231f';c.font='800 34px "Segoe UI","Microsoft YaHei"';c.fillText('今日学习日报',42,54);c.fillStyle='#444';c.font='15px "Segoe UI"';c.fillText(`${state.currentDate.getFullYear()}年${dateLabel(state.currentDate)}`,43,82);
+  const metrics=[['学习总时长',durationLabel(totalSeconds)],['记录事件',`${records.length} 项`],['待复习',`${pending} 项`]];metrics.forEach(([label,value],index)=>{const x=42+index*225;c.fillStyle='#f5f5f0';roundRect(c,x,112,205,96,16);c.fill();c.fillStyle='#444';c.font='12px "Segoe UI"';c.fillText(label,x+18,141);c.fillStyle='#20231f';c.font='800 26px "Segoe UI"';c.fillText(value,x+18,181);});
+  const distribution=new Map();records.forEach((event)=>{const subject=subjectById(event.categoryId),key=subject?.id||'other',item=distribution.get(key)||{name:subject?.name||'未分类',color:subject?.color||event.color||'#88928b',seconds:0};item.seconds+=focusSeconds(event);distribution.set(key,item);});const items=[...distribution.values()],sum=items.reduce((value,item)=>value+item.seconds,0),cx=930,cy=161,radius=82;c.lineWidth=28;let angle=-Math.PI/2;if(sum){items.forEach((item)=>{const next=angle+item.seconds/sum*Math.PI*2;c.strokeStyle=item.color;c.beginPath();c.arc(cx,cy,radius,angle,next);c.stroke();angle=next;});}else{c.strokeStyle='#e5e7e2';c.beginPath();c.arc(cx,cy,radius,0,Math.PI*2);c.stroke();}c.fillStyle='#20231f';c.textAlign='center';c.font='800 21px "Segoe UI"';c.fillText(durationLabel(totalSeconds),cx,158);c.fillStyle='#444';c.font='11px "Segoe UI"';c.fillText('记录区总时长',cx,178);c.textAlign='left';items.slice(0,6).forEach((item,index)=>{const x=1060,y=125+index*27;c.fillStyle=item.color;c.beginPath();c.arc(x,y-4,5,0,Math.PI*2);c.fill();c.fillStyle='#3d443f';c.font='12px "Segoe UI"';c.fillText(`${item.name}  ${sum?Math.round(item.seconds/sum*100):0}%`,x+13,y);});
+  c.fillStyle='#20231f';c.font='800 17px "Segoe UI"';c.fillText('学习时间轴',42,287);c.fillStyle='#444';c.font='11px "Segoe UI"';c.fillText('箭头颜色代表学科；虚线代表复习任务',42,309);c.textAlign='center';c.font='800 12px "Segoe UI"';c.fillText('计划区',target.planWidth/2,348);c.fillText('记录区',target.planWidth+(target.width-target.planWidth)/2,348);drawTimeline(c,target,{exportMode:true});
   const url=output.toDataURL('image/png');dom.dailyReportPreview.src=url;dom.dailyReportDownload.href=url;dom.dailyReportDownload.download=`学习日报_${currentDateKey()}.png`;closeToolbarMenu();openModal('reportModal');
 }
 function downloadBlob(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
@@ -1172,13 +1311,13 @@ function onKeydown(event) {
   if(trapOverlayTab(event))return;
   const typing=['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName);
   if(!typing&&matchesShortcut(event,state.settings.shortcut)){event.preventDefault();toggleSelection();return;}
-  if(event.key==='Escape'){if(state.modalStack.length){event.preventDefault();const id=state.modalStack.at(-1);if(id==='planReminderModal')snoozePlanReminder();else closeModal(id);return;}if(!dom.immersionOverlay.classList.contains('hidden')){exitImmersion();return;}if(dom.reviewCard.classList.contains('fullscreen')){toggleReviewFullscreen();return;}cancelSelection();hideContextMenu();closeToolbarMenu();closeAllModals();}
+  if(event.key==='Escape'){if(state.modalStack.length){event.preventDefault();const id=state.modalStack.at(-1);if(id==='planReminderModal')snoozePlanReminder();else closeModal(id);return;}if(!dom.immersionOverlay.classList.contains('hidden')){exitImmersion();return;}if(dom.reviewCard.classList.contains('fullscreen')){toggleReviewFullscreen();return;}if(state.mergeMode){event.preventDefault();cancelMergeMode();return;}cancelSelection();hideContextMenu();closeToolbarMenu();closeAllModals();}
   if(!typing&&event.ctrlKey&&event.key.toLowerCase()==='z'){event.preventDefault();undo();}
   if(!typing&&event.ctrlKey&&event.key.toLowerCase()==='y'){event.preventDefault();redo();}
 }
-function renderAll(){renderDate();renderTimeline();renderReviews();renderFocusSubjects();renderFocus();}
+function renderAll(){renderDate();renderTimeline();renderReviews();renderFocusSubjects();renderFocus();renderMergeBar();}
 
 updateFocusDurationUI();
 checkPlanReminders();
 state.planReminderTicker=setInterval(checkPlanReminders,15000);
-if('serviceWorker'in navigator&&/^https?:$/.test(location.protocol))navigator.serviceWorker.register('./sw.js?v=25').catch(()=>{});
+if('serviceWorker'in navigator&&/^https?:$/.test(location.protocol))navigator.serviceWorker.register('./sw.js?v=30').catch(()=>{});
