@@ -139,7 +139,7 @@ test('cross-midnight segment is split by date without double counting', () => {
 test('late countdown check caps active duration and asks for completion instead of completing automatically', () => {
   const h=harness();h.run("dom.focusTimerType.value='countdown';dom.focusDuration.value='1';startFocus(state.categories[0].id)");h.advance(3600000);h.run('tickFocus()');
   assert.equal(h.run('state.focusTasks[0].totalSeconds'),60);assert.equal(h.run('state.focusTasks[0].status'),'paused');assert.equal(h.run('state.reviews.length'),0);assert.ok(h.run('state.pendingFocus'));
-  h.run('discardFocusRecord();resumeFocusTask(state.focusTasks[0].id)');assert.equal(h.run('state.focus.type'),'countup');
+  h.run('discardFocusRecord();resumeFocusTask(state.focusTasks[0].id)');assert.equal(h.run('state.focus.type'),'countdown');assert.equal(h.run('state.focus.elapsedBefore'),0);
 });
 
 test('completion form keeps summary blank and can save unfinished chapters', () => {
@@ -563,13 +563,14 @@ test('050 swapped immersion survives reload without changing saved note fields',
   fresh.advance(60000);fresh.run('renderFocus()');assert.match(fresh.nodes.get('immersionTotal').textContent,/00:01:00/);
 });
 
-test('051 video defaults only for a fresh learning task, existing action and review semantics survive', () => {
-  const h=harness();h.run('startFocus(state.categories[0].id)');assert.equal(h.nodes.get('immersionActionType').value,'video');
-  h.nodes.get('immersionActionType').value='practice';h.nodes.get('immersionActionType').emit('change');h.advance(10000);h.run('pauseFocus();resumeFocusTask(state.focusTasks[0].id)');
-  assert.equal(h.nodes.get('immersionActionType').value,'practice');
-  const fresh=harness(h.storage);assert.equal(fresh.run('state.focus.immersiveFields.actionType'),'practice');
-  assert.deepEqual([...html.match(/id="immersionActionType">([\s\S]*?)<\/select>/)[1].matchAll(/value="([^"]+)"/g)].map(m=>m[1]),['video','practice','memorize','reading','review']);
-  const review=harness();review.run("dom.focusTaskType.value='review';startFocus(state.categories[0].id)");assert.equal(review.nodes.get('immersionActionType').value,'review');
+test('051 uses one new/apply/memorize action, defaults to new and migrates legacy values', () => {
+  const h=harness();h.run('startFocus(state.categories[0].id)');assert.equal(h.nodes.get('immersionActionType').value,'new');
+  h.click('immersionActionApply');h.advance(10000);h.run('pauseFocus();resumeFocusTask(state.focusTasks[0].id)');
+  assert.equal(h.nodes.get('immersionActionType').value,'apply');
+  const fresh=harness(h.storage);assert.equal(fresh.run('state.focus.immersiveFields.actionType'),'apply');
+  assert.deepEqual([...html.match(/id="immersionActionType"[^>]*>([\s\S]*?)<\/select>/)[1].matchAll(/value="([^"]+)"/g)].map(m=>m[1]),['new','apply','memorize']);
+  assert.deepEqual([...html.matchAll(/class="event-action-type"[^>]*value="([^"]+)"/g)].map(m=>m[1]),['new','apply','memorize']);
+  assert.deepEqual(h.json("normalizeActionTypes(['video','practice','reading','review'])"),['new']);
 });
 
 test('052 PiP requests compact size, renders exactly three rows and its pause saves the task', async () => {
@@ -594,9 +595,12 @@ test('052 unsupported or rejected PiP leaves the active timer usable', async () 
 test('053 month headings omit zero durations, use ten heat levels and keep task text readable', () => {
   const h=harness();assert.deepEqual(h.json('[0,1,3599,3600,7200,32400,35999,36000,72000].map(calendarHeatLevel)'),[0,1,1,1,2,9,9,10,10]);
   assert.equal(h.run('new Set(Array.from({length:10},(_,i)=>calendarHeatColor((i+1)*3600))).size'),10);
+  assert.deepEqual(h.json('[1,59,60,3599,3600,3660,35999,36000,36900].map(calendarDurationLabel)'),['1s','59s','1m','59m','1h','1h','9.9h','10h','10.2h']);
   h.run("state.events=[{id:'month',date:currentDateKey(),halfZone:'record',focusSeconds:36000,eventName:'深色任务',categoryId:state.categories[0].id}];renderCalendar()");
   const markup=h.nodes.get('monthCalendar').innerHTML;assert.match(markup,/calendar-day-heading[\s\S]*data-heat-level="10"/);assert.equal((markup.match(/calendar-day-duration/g)||[]).length,1);
-  assert.match(fs.readFileSync(path.join(root,'styles.css'),'utf8'),/\.calendar-event, \.calendar-event-label \{ color: #333;/);
+  const css=fs.readFileSync(path.join(root,'styles.css'),'utf8');assert.match(css,/\.calendar-day-heading \{[^}]*flex-wrap: nowrap;[^}]*white-space: nowrap;/);
+  assert.match(css,/repeat\(7,minmax\(54px,1fr\)\)/);assert.match(css,/\.calendar-event, \.calendar-event-label \{ color: #333;/);
+  assert.equal((html.match(/<i style="--heat-color:#[0-9a-f]{6}"><\/i>/gi)||[]).length,10);assert.match(html,/0h不显示/);
 });
 
 test('054 stacked focus expands intrinsically and paused tasks are not truncated from markup', () => {
@@ -622,9 +626,9 @@ test('055 learning/review totals, percentages and tooltip agree and exclude plan
 
 test('055 each monthly/day chart point is labelled with an actual duration, including zero', () => {
   const h=harness();h.drawCalls.length=0;h.run("drawMonthlyChart([{date:'2026-08-27',focusSeconds:5400}])");
-  assert.equal(h.drawCalls.filter(call=>call.text==='1h 30m').length,1);assert.equal(h.drawCalls.filter(call=>call.text==='0m').length,30);
-  h.drawCalls.length=0;h.run("drawYearlyChart([{date:'2026-08-27',focusSeconds:7200}])");assert.equal(h.drawCalls.filter(call=>call.text==='2h 0m').length,1);assert.equal(h.drawCalls.filter(call=>call.text==='0m').length,11);
-  assert.ok(parseInt(h.nodes.get('monthlyChart').style.minWidth)>1000);
+  assert.equal(h.drawCalls.filter(call=>call.text==='1.5h').length,1);assert.equal(h.drawCalls.filter(call=>call.text==='0').length,30);
+  h.drawCalls.length=0;h.run("drawYearlyChart([{date:'2026-08-27',focusSeconds:7200}])");assert.equal(h.drawCalls.filter(call=>call.text==='2h').length,1);assert.equal(h.drawCalls.filter(call=>call.text==='0').length,11);
+  assert.equal(h.nodes.get('monthlyChart').style.minWidth,'0');
 });
 
 function seedStatsHierarchy(h){h.run("state.categories=[{id:'root',name:'数学',color:'#336644',children:[{id:'a',name:'高数',children:[{id:'a1',name:'积分'}]},{id:'b',name:'线代'}]},{id:'other',name:'英语',children:[]}];state.statsSubjects=new Set();");}
@@ -673,7 +677,7 @@ test('059 historical completion stays out of today and a counted review is not d
 test('recheck: manual pause and stop after countdown expiry cap the final segment at its deadline', () => {
   for(const action of ['pauseFocus()', 'finishFocus(false)']){
     const h=harness(new Map(),'2026-08-27T23:59:30');h.run("dom.focusTimerType.value='countdown';dom.focusDuration.value='1';startFocus(state.categories[0].id)");h.advance(10000);h.run('pauseFocus()');h.advance(600000);h.run('resumeFocusTask(state.focusTasks[0].id)');h.advance(300000);h.run(action);
-    assert.equal(h.run('state.focusTasks[0].totalSeconds'),60);assert.equal(h.run('state.events.reduce((sum,e)=>sum+e.focusSeconds,0)'),60);assert.equal(h.run('state.events.at(-1).focusSeconds'),50);
+    assert.equal(h.run('state.focusTasks[0].totalSeconds'),70);assert.equal(h.run('state.events.reduce((sum,e)=>sum+e.focusSeconds,0)'),70);assert.equal(h.run('state.events.at(-1).focusSeconds'),60);
   }
 });
 
@@ -718,10 +722,10 @@ test('060 merges independent learning events into one completed task and regener
   assert.equal(h.run('state.focusTasks.length'),1);assert.equal(h.run('state.focusTasks[0].status'),'completed');assert.equal(h.run('state.focusTasks[0].totalSeconds'),3000);
   assert.equal(h.run("state.events.every(event=>event.focusTaskId===state.focusTasks[0].id&&event.eventName==='统一章节')"),true);
   assert.equal(h.run("state.events[0].materialLocation"),'P1-P10；P11-P20');assert.equal(h.run('state.reviews.length'),5);
-  assert.deepEqual(h.json('state.events[0].actionTypes'),['video','practice','reading']);
+  assert.deepEqual(h.json('state.events[0].actionTypes'),['new']);
   assert.equal(h.run('new Set(state.reviews.map(review=>review.sourceEventId)).size'),1);assert.equal(h.run('state.reviews[0].sourceEventId'),'first');assert.equal(h.run('state.reviews[0].reviewDate'),'2026-08-30');
-  h.run('undo()');assert.equal(h.run('state.focusTasks.length'),0);assert.equal(h.run('state.reviews.length'),10);assert.deepEqual(h.json("state.events.find(event=>event.id==='first').actionTypes"),['video','practice']);assert.equal(h.run('state.mergeMode'),false);assert.equal(h.run('state.mergeSelection.size'),0);
-  h.run('redo()');assert.equal(h.run('state.focusTasks.length'),1);assert.equal(h.run('state.reviews.length'),5);assert.deepEqual(h.json('state.events[0].actionTypes'),['video','practice','reading']);
+  h.run('undo()');assert.equal(h.run('state.focusTasks.length'),0);assert.equal(h.run('state.reviews.length'),10);assert.deepEqual(h.json("state.events.find(event=>event.id==='first').actionTypes"),['new']);assert.equal(h.run('state.mergeMode'),false);assert.equal(h.run('state.mergeSelection.size'),0);
+  h.run('redo()');assert.equal(h.run('state.focusTasks.length'),1);assert.equal(h.run('state.reviews.length'),5);assert.deepEqual(h.json('state.events[0].actionTypes'),['new']);
 });
 
 test('060 refuses a partial merge of an existing multi-segment task', () => {
@@ -732,7 +736,7 @@ test('060 refuses a partial merge of an existing multi-segment task', () => {
 test('061 completed event can return to unfinished without losing content and can complete again', () => {
   const h=harness();h.run("state.events=[{id:'source',date:currentDateKey(),halfZone:'record',taskType:'learn',categoryId:state.categories[0].id,categoryName:'数学',subjectPath:[state.categories[0].id],eventName:'误完成章节',materialLocation:'P3',textContent:'保留摘要',notes:'保留笔记',leftover:'保留遗留',actionTypes:['video','practice'],startSlot:480,endSlot:510}];generateReviews(state.events[0]);reopenCompletedEvent('source')");
   assert.equal(h.run('state.reviews.length'),0);assert.equal(h.run('state.focusTasks[0].status'),'paused');assert.equal(h.run("state.events[0].eventName+'|'+state.events[0].materialLocation+'|'+state.events[0].textContent+'|'+state.events[0].notes+'|'+state.events[0].leftover"),'误完成章节|P3|保留摘要|保留笔记|保留遗留');
-  assert.deepEqual(h.json('state.events[0].actionTypes'),['video','practice']);h.run('resumeFocusTask(state.focusTasks[0].id)');h.advance(1000);h.run('pauseFocus()');assert.deepEqual(h.json('state.events[0].actionTypes'),['video','practice']);
+  assert.deepEqual(h.json('state.events[0].actionTypes'),['new']);h.run('resumeFocusTask(state.focusTasks[0].id)');h.advance(1000);h.run('pauseFocus()');assert.deepEqual(h.json('state.events[0].actionTypes'),['new']);
   h.run('completeFocusTask(state.focusTasks[0])');assert.equal(h.run('state.focusTasks[0].status'),'completed');assert.equal(h.run('state.reviews.length'),5);
 });
 
@@ -757,6 +761,29 @@ test('064 context menu flips above near the viewport bottom and clamps its right
   const h=harness();h.nodes.get('contextMenu').getBoundingClientRect=()=>({width:145,height:140});
   assert.deepEqual(h.json("(()=>{window.innerWidth=500;window.innerHeight=600;return positionContextMenu(480,590)})()"),{left:347,top:442});
   assert.deepEqual(h.json('positionContextMenu(20,20)'),{left:20,top:28});
+});
+
+test('065 report and statistics arrows change their visible date or period and refresh data', () => {
+  const h=harness();h.run('exportImage()');h.click('reportPrevDay');assert.equal(h.run('currentDateKey()'),'2026-08-26');assert.equal(h.nodes.get('reportDateLabel').textContent,'2026-08-26');assert.equal(h.nodes.get('dailyReportDownload').download,'学习日报_2026-08-26.png');
+  h.run('openStats()');h.click('statsPrevPeriod');assert.equal(h.run('dateKey(state.statsAnchor)'),'2026-08-26');assert.equal(h.nodes.get('statsPeriodLabel').textContent,'2026-08-26');
+  h.nodes.get('statsRange').value='month';h.nodes.get('statsRange').emit('change');h.click('statsNextPeriod');assert.equal(h.run('state.statsAnchor.getMonth()'),8);assert.match(h.nodes.get('statsPeriodLabel').textContent,/2026 年 9 月/);
+});
+
+test('066 hierarchical statistics dropdown escapes clipping and stays above surrounding content', () => {
+  const css=fs.readFileSync(path.join(root,'styles.css'),'utf8');assert.match(css,/#statsSubjectFilters \{[^}]*z-index:\s*20;[^}]*overflow:\s*visible;/);assert.match(css,/\.stats-subject-node\.depth-0 > \.stats-subject-children \{[^}]*position:\s*absolute;[^}]*z-index:\s*80;[^}]*overflow:\s*auto;/);
+});
+
+test('068 selecting one task segment selects its siblings and least-progress merge resumes the next review number', () => {
+  const h=harness();h.run("state.focusTasks=[{id:'task-a',status:'paused',reviewSourceEventId:'a1',fields:{eventName:'A'},segmentEventIds:['a1','a2']}];state.events=[{id:'a1',focusTaskId:'task-a',date:'2026-08-20',halfZone:'record',taskType:'learn',categoryId:state.categories[0].id,subjectPath:[state.categories[0].id],startSlot:480,endSlot:490},{id:'a2',focusTaskId:'task-a',date:'2026-08-21',halfZone:'record',taskType:'learn',categoryId:state.categories[0].id,subjectPath:[state.categories[0].id],startSlot:480,endSlot:490},{id:'b',date:'2026-08-22',halfZone:'record',taskType:'learn',categoryId:state.categories[0].id,subjectPath:[state.categories[0].id],startSlot:480,endSlot:490}];toggleMergeEventSelection(state.events[0])");assert.deepEqual(h.json('[...state.mergeSelection].sort()'),['a1','a2']);h.run('toggleMergeEventSelection(state.events[1])');assert.equal(h.run('state.mergeSelection.size'),0);
+  const m=harness();m.run("state.events=[{id:'older',date:'2026-08-20',halfZone:'record',taskType:'learn',categoryId:state.categories[0].id,categoryName:'数学',subjectPath:[state.categories[0].id],eventName:'章节',startSlot:480,endSlot:500},{id:'newer',date:'2026-08-22',halfZone:'record',taskType:'learn',categoryId:state.categories[0].id,categoryName:'数学',subjectPath:[state.categories[0].id],eventName:'章节',startSlot:500,endSlot:520}];state.reviews=[{id:'o1',sourceEventId:'older',reviewNumber:1,reviewDate:'2026-08-21',completed:true,completedAt:'2026-08-21T10:00:00'},{id:'o2',sourceEventId:'older',reviewNumber:2,reviewDate:'2026-08-23',completed:true,completedAt:'2026-08-23T10:00:00'},{id:'n1',sourceEventId:'newer',reviewNumber:1,reviewDate:'2026-08-23',completed:true,completedAt:'2026-08-23T09:00:00'}];state.mergeSelection=new Set(['older','newer']);mergeSelectedEvents('合并章节','least-progress')");assert.deepEqual(m.json('state.reviews.map(r=>r.reviewNumber)'),[2,3,4,5]);assert.equal(m.run('state.reviews.every(r=>r.regeneratedFromReviewCount===1)'),true);
+});
+
+test('069 learning progress is stored separately and shown on paused tasks and timeline details', () => {
+  const h=harness();h.run('startFocus(state.categories[0].id)');h.nodes.get('immersionMaterialLocation').value='讲义 P69';h.nodes.get('immersionProgress').value='第 4.3 节';h.nodes.get('immersionProgress').emit('input');h.advance(1000);h.run('pauseFocus()');assert.equal(h.run('state.focusTasks[0].fields.materialLocation'),'讲义 P69');assert.equal(h.run('state.focusTasks[0].fields.progress'),'第 4.3 节');assert.match(h.nodes.get('unfinishedTaskList').innerHTML,/学习进度：第 4\.3 节/);h.run('openEventDetail(state.events[0].id)');assert.match(h.nodes.get('eventDetailBody').innerHTML,/学习进度[\s\S]*第 4\.3 节/);
+});
+
+test('070 continuing a count-up task starts the visible timer at zero while preserving cumulative duration', () => {
+  const h=harness();h.run('startFocus(state.categories[0].id)');h.advance(10000);h.run('pauseFocus()');h.advance(600000);h.run('resumeFocusTask(state.focusTasks[0].id);renderFocus()');assert.equal(h.nodes.get('focusClock').textContent,'00:00:00');assert.equal(h.run('state.focus.elapsedBefore'),0);h.advance(5000);h.run('renderFocus()');assert.equal(h.nodes.get('focusClock').textContent,'00:00:05');h.run('pauseFocus()');assert.equal(h.run('state.focusTasks[0].totalSeconds'),15);
 });
 
 test('recheck: Escape, restore and render clear stale merge selections', () => {

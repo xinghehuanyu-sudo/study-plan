@@ -1,8 +1,9 @@
 const STORAGE_KEY = 'learning_tool_backup';
 const ACTIVE_FOCUS_KEY = 'learning_tool_active_focus';
-const DATA_VERSION = 10;
-const ACTION_TYPE_LABELS = { video: '视频', practice: '习题', memorize: '背诵', reading: '阅读', review: '复习' };
-const ACTION_TYPE_ICONS = { video: '▶', reading: '▤', practice: '✎', memorize: '◆', review: '↻' };
+const DATA_VERSION = 11;
+const ACTION_TYPE_LABELS = { new: '新知', apply: '运用', memorize: '记诵' };
+const ACTION_TYPE_ICONS = { new: '✦', apply: '✎', memorize: '◇' };
+const ACTION_TYPE_MIGRATION = { new: 'new', apply: 'apply', memorize: 'memorize', video: 'new', practice: 'apply' };
 const MASTERY_LABELS = { unknown: '尚未判断', weak: '薄弱', partial: '部分掌握', mastered: '已掌握' };
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
 const QUOTES = [
@@ -54,7 +55,7 @@ const state = {
   inputDialog: null, modalStack: [], modalReturnFocus: new Map(),
   layoutEditing: false, dividerDragging: false, focus: null, pendingFocus: null, focusTicker: null,
   pendingPlanReminderId: null, planReminderTicker: null, reviewDayKey: null,
-  calendarMonth: startOfMonth(new Date()), selectedSubjectId: null, statsSubjects: new Set(),
+  calendarMonth: startOfMonth(new Date()), selectedSubjectId: null, statsSubjects: new Set(), statsAnchor: startOfDay(new Date()),
   selectedDetailEventId: null, reviewGroupOpen: new Map(), statsExpanded: new Set(), mergeMode: false, mergeSelection: new Set(),
   installPrompt: null, canvasClickTimer: null, audioContext: null, pipWindow: null, pipRequest: null, unfinishedMarkup: null,
   statVisibility: { summary: true, today: true, distribution: true, monthly: true, yearly: true }
@@ -63,28 +64,28 @@ const state = {
 const dom = {};
 [
   'mainLayout','timelineScroll','timelineCanvas','currentDateLabel','reviewBadge','currentDateButton','reviewList','reviewListSummary','reviewCard','reviewFullscreenBtn',
-  'toolbarMenuBtn','toolbarMenu','layoutEditBar','layoutMode','addEventBtn','mergeEventsBtn','eventMergeBar','eventMergeCount','eventMergeName','confirmEventMergeBtn','cancelEventMergeBtn','editLayoutBtn','finishLayoutBtn','resetLayoutBtn',
+  'toolbarMenuBtn','toolbarMenu','layoutEditBar','layoutMode','addEventBtn','mergeEventsBtn','eventMergeBar','eventMergeCount','eventMergeName','eventMergeStrategy','confirmEventMergeBtn','cancelEventMergeBtn','editLayoutBtn','finishLayoutBtn','resetLayoutBtn',
   'sideResizeHandle','focusReviewHandle','contextMenu','importInput','eventModal','settingsModal','calendarModal',
   'statsModal','subjectsModal','planReminderModal','reviewDetailModal','focusDetailModal','eventDetailModal','leftoverModal','planReminderSubject','planReminderTime',
   'planReminderTitle','planReminderActions','planReminderLocation','planReminderIgnoreBtn','planReminderSnoozeBtn','planReminderStartBtn',
   'reviewDetailTitle','reviewDetailBasic','reviewDetailLearning',
   'reviewDetailHistory','reviewDetailStartBtn','eventModalTitle','eventHalfZone','eventTaskType','eventName','eventSubjectPath','eventSubjectOptions','eventCategory',
-  'eventSubcategory','eventTopic','eventColor','eventOpacity','eventMaterialLocation','eventMastery',
+  'eventSubcategory','eventTopic','eventColor','eventOpacity','eventMaterialLocation','eventProgress','eventMastery',
   'eventTextContent','eventNotes','eventLeftover','eventImportant','eventTextSize','eventTextColor',
   'eventTextOpacity','eventStartHour','eventStartMinute','eventStartSecond','eventEndHour','eventEndMinute','eventEndSecond','eventTimeSummary','eventTaskEditNotice',
   'settingStartHour','settingHourHeight','settingPlanRatio','settingDefaultZone','settingMinuteInterval',
   'settingEventPlacement','settingDotSize','settingDotOpacity','settingArrowWidth','settingArrowSize','settingCompactToolbar','settingShowDots','settingDividerDrag',
   'settingHiddenHours','settingReviewPreset','settingReviewIntervals','settingReviewArrowWidth','settingReviewArrowSize','settingReviewArrowDash',
   'settingShortcut','settingCountdownName','settingCountdownDate','settingImmersionTheme','settingImmersionOpacity','settingCountdownSize','settingCountdownPosition','settingImmersionBackground','settingLocalBackground','localBackgroundStatus',
-  'settingShowCountdown','settingShowQuote','settingSoundType','settingSoundDuration','settingSoundVolume','settingSoundEnabled','settingNotificationsEnabled','monthCalendar','calendarTitle','statsSubjectFilters','statsRange','statsCustomRange','statsCustomFrom','statsCustomTo','statsChartType',
-  'statTotalCount','statTotalTime','statDailyAverage','statTodayCount','statTodayTime','statTodaySplit','distributionChart','distributionDetails',
-  'monthlyChart','yearlyChart','subjectsList','subjectDetail','focusCard','focusCollapseBtn','focusBody','focusSubjects','focusTaskType','focusTimerType','focusDurationWrap',
+  'settingShowCountdown','settingShowQuote','settingSoundType','settingSoundDuration','settingSoundVolume','settingSoundEnabled','settingNotificationsEnabled','monthCalendar','calendarTitle','statsSubjectFilters','statsRange','statsCustomRange','statsCustomFrom','statsCustomTo','statsChartType','statsPrevPeriod','statsNextPeriod','statsPeriodLabel',
+  'statTotalCount','statTotalTime','statDailyAverage','statTodayCount','statTodayTime','statTodaySplit','statDayTitle','distributionChart','distributionDetails',
+  'monthlyChart','yearlyChart','statMonthTitle','statYearTitle','subjectsList','subjectDetail','focusCard','focusCollapseBtn','focusBody','focusSubjects','focusTaskType','focusTimerType','focusDurationWrap',
   'focusDuration','focusCustomDurationWrap','focusCustomDuration','focusClock','focusSubjectLabel','focusLiveNote','focusStatus',
   'stopFocusBtn','pauseFocusBtn','unfinishedTaskPanel','unfinishedTaskList','focusResultName','focusResultSummary','focusResultLeftover','focusCompletionStatus','enterImmersionBtn','focusDetailTitle','focusSummary','focusStartLabel','focusEndLabel','focusDetailLabel',
   'focusStartPoint','focusEndPoint','focusResultMastery','focusDetailText','immersionOverlay','immersionBackdrop','immersionContent',
-  'immersionMode','immersionClock','immersionSubject','immersionTotal','immersionSwapBtn','immersionReviewCard','immersionInputCard','immersionLiveNote','immersionMaterialLocation','immersionEventName','immersionSummary','immersionLeftover','immersionActionType','immersionMastery','immersionCountdown','immersionQuote','immersionPipBtn',
+  'immersionMode','immersionClock','immersionSubject','immersionTotal','immersionSwapBtn','immersionReviewCard','immersionInputCard','immersionLiveNote','immersionMaterialLocation','immersionProgress','immersionEventName','immersionSummary','immersionLeftover','immersionActionPicker','immersionActionNew','immersionActionApply','immersionActionMemorize','immersionActionType','immersionMastery','immersionCountdown','immersionQuote','immersionPipBtn',
   'eventDetailTitle','eventDetailBody','eventDetailEditBtn','eventDetailReopenBtn','eventDetailStartBtn','timelineTooltip','leftoverList','installAppBtn','reloadConfigBtn','reloadConfigFeedback','compactTimelinePresetBtn',
-  'inputDialogModal','inputDialogForm','inputDialogTitle','inputDialogLabel','inputDialogDescription','inputDialogValue','inputDialogEarlierWrap','inputDialogEarlier','inputDialogError','dailyReportPreview','dailyReportDownload'
+  'inputDialogModal','inputDialogForm','inputDialogTitle','inputDialogLabel','inputDialogDescription','inputDialogValue','inputDialogEarlierWrap','inputDialogEarlier','inputDialogError','dailyReportPreview','dailyReportDownload','reportPrevDay','reportNextDay','reportDateLabel'
 ].forEach((id) => { dom[id] = document.getElementById(id); });
 
 const canvas = dom.timelineCanvas;
@@ -169,7 +170,8 @@ function bindEvents() {
   dom.focusDuration.addEventListener('change', updateFocusDurationUI);
   dom.focusLiveNote.addEventListener('input', () => updateFocusLiveNote(dom.focusLiveNote.value));
   dom.immersionLiveNote.addEventListener('input', () => updateFocusLiveNote(dom.immersionLiveNote.value));
-  [dom.immersionMaterialLocation,dom.immersionEventName,dom.immersionSummary,dom.immersionLeftover,dom.immersionActionType,dom.immersionMastery].forEach((input)=>input.addEventListener(input.tagName==='SELECT'?'change':'input',updateFocusImmersionFields));
+  [dom.immersionMaterialLocation,dom.immersionProgress,dom.immersionEventName,dom.immersionSummary,dom.immersionLeftover,dom.immersionActionType,dom.immersionMastery].forEach((input)=>input.addEventListener(input.tagName==='SELECT'?'change':'input',updateFocusImmersionFields));
+  [[dom.immersionActionNew,'new'],[dom.immersionActionApply,'apply'],[dom.immersionActionMemorize,'memorize']].forEach(([button,action])=>button.addEventListener('click',()=>setImmersionAction(action)));
   dom.importInput.addEventListener('change', importData);
   document.querySelectorAll('[data-close]').forEach((button) => button.addEventListener('click', () => closeModal(button.dataset.close)));
   document.querySelectorAll('.filter-btn').forEach((button) => button.addEventListener('click', () => setReviewFilter(button.dataset.filter)));
@@ -178,6 +180,10 @@ function bindEvents() {
   dom.statsCustomFrom.addEventListener('change', renderStats);
   dom.statsCustomTo.addEventListener('change', renderStats);
   dom.statsChartType.addEventListener('change', renderStats);
+  dom.statsPrevPeriod.addEventListener('click',()=>shiftStatsPeriod(-1));
+  dom.statsNextPeriod.addEventListener('click',()=>shiftStatsPeriod(1));
+  dom.reportPrevDay.addEventListener('click',()=>shiftReportDate(-1));
+  dom.reportNextDay.addEventListener('click',()=>shiftReportDate(1));
 
   dom.eventCategory.addEventListener('change', () => { syncSubcategoryOptions(); syncEventAppearance(); });
   dom.eventSubcategory.addEventListener('change', () => { syncTopicOptions(); syncEventAppearance(); });
@@ -224,6 +230,8 @@ function bindEvents() {
 
 function clone(value) { return JSON.parse(JSON.stringify(value)); }
 function clamp(value, min, max) { return Math.max(min, Math.min(max, value)); }
+function normalizeActionType(value){return ACTION_TYPE_MIGRATION[value]||null;}
+function normalizeActionTypes(values,defaultToNew=true){const result=[...new Set((Array.isArray(values)?values:[values]).map(normalizeActionType).filter(Boolean))];return result.length?[result[0]]:(defaultToNew?['new']:[]);}
 function pad(value) { return String(value).padStart(2, '0'); }
 function startOfDay(date) { const next = new Date(date); next.setHours(0,0,0,0); return next; }
 function startOfMonth(date) { return new Date(date.getFullYear(), date.getMonth(), 1); }
@@ -343,7 +351,7 @@ function eventLabelPlacement(event,targetLayout) {
 function layoutEventLabel(context,event,targetLayout) {
   const placement=eventLabelPlacement(event,targetLayout);if(!placement)return null;
   const subject=subjectById(event.categoryId),fontSize=clamp(event.textSize||subject?.textSize||state.settings.defaultTextSize,10,24),smallSize=Math.max(9,fontSize-2),lineHeight=fontSize+5;
-  const prefix=[event.taskStatus==='paused'?'Ⅱ':event.halfZone==='plan'?(event.planCompletedAt?'✓':''): '',event.important?'★':'',(event.categoryName||'').split('/')[1]||'',...(event.actionTypes||[]).map(type=>ACTION_TYPE_ICONS[type]).filter(Boolean)].filter(Boolean).join(' ');
+  const prefix=[event.taskStatus==='paused'?'Ⅱ':event.halfZone==='plan'?(event.planCompletedAt?'✓':''): '',event.important?'★':'',(event.categoryName||'').split('/')[1]||'',...normalizeActionTypes(event.actionTypes).map(type=>ACTION_TYPE_ICONS[type]).filter(Boolean)].filter(Boolean).join(' ');
   const runs=[{text:prefix?prefix+' ':'',font:`600 ${smallSize}px "Segoe UI","Microsoft YaHei"`,color:'#607067'},{text:eventTitle(event),font:`${(event.italic??subject?.italic)?'italic ':''}${(event.bold??subject?.bold)?700:400} ${fontSize}px "Segoe UI","Microsoft YaHei"`,color:event.textColor||'#20231f'},{text:event.materialLocation?' '+event.materialLocation:'',font:`400 ${smallSize}px "Segoe UI","Microsoft YaHei"`,color:'#526259'}];
   const glyphs=runs.flatMap(run=>Array.from(run.text).map(char=>({...run,text:char}))),parts=[];let x=0,truncated=false;
   context.save();
@@ -423,7 +431,7 @@ function onCanvasMove(event) {
   if(label?.truncated)showTimelineTooltip(event.clientX,event.clientY,label.fullText.trim());else dom.timelineTooltip.classList.add('hidden');
 }
 function onCanvasClick(event) {
-  if(state.mergeMode){const hit=hitTest(event);if(!hit)return;if(hit.halfZone!=='record'||(hit.taskType||'learn')!=='learn'){window.alert('只能合并时间轴记录区的学习事件。');return;}state.mergeSelection.has(hit.id)?state.mergeSelection.delete(hit.id):state.mergeSelection.add(hit.id);renderMergeBar();renderTimeline();return;}
+  if(state.mergeMode){const hit=hitTest(event);if(!hit)return;if(hit.halfZone!=='record'||(hit.taskType||'learn')!=='learn'){window.alert('只能合并时间轴记录区的学习事件。');return;}toggleMergeEventSelection(hit);renderMergeBar();renderTimeline();return;}
   if(!state.selection){const hit=hitTest(event);state.selectedEventId=hit?.id||null;renderTimeline();clearTimeout(state.canvasClickTimer);if(hit)state.canvasClickTimer=setTimeout(()=>openEventDetail(hit.id),190);return;}
   const p=pointerInfo(event);
   if(!Number.isFinite(state.selection.startSlot)){state.selection.zone=p.zone;state.selection.startSlot=p.slot;state.selection.hoverSlot=p.slot;renderTimeline();return;}
@@ -449,12 +457,25 @@ function renderMergeBar(){
 }
 function toggleMergeMode(){
   if(state.mergeMode){cancelMergeMode();return;}
-  cancelSelection();closeAllModals();state.mergeMode=true;state.mergeSelection.clear();state.selectedEventId=null;dom.eventMergeName.value='';renderMergeBar();renderTimeline();
+  cancelSelection();closeAllModals();state.mergeMode=true;state.mergeSelection.clear();state.selectedEventId=null;dom.eventMergeName.value='';dom.eventMergeStrategy.value='least-progress';renderMergeBar();renderTimeline();
 }
 function cancelMergeMode(){state.mergeMode=false;state.mergeSelection.clear();dom.eventMergeName.value='';renderMergeBar();dom.timelineTooltip.classList.add('hidden');renderTimeline();}
 function uniqueJoined(values,separator){return [...new Set(values.map(value=>String(value||'').trim()).filter(Boolean))].join(separator);}
 function eventEndTimestamp(event){const date=parseDate(event.date),seconds=Math.round(Number(event.endSlot||0)*60);date.setHours(0,0,0,0);date.setSeconds(seconds);return date.getTime();}
-function mergeSelectedEvents(name=''){
+function relatedMergeEvents(event){return event.focusTaskId?state.events.filter(item=>item.focusTaskId===event.focusTaskId&&item.halfZone==='record'&&(item.taskType||'learn')==='learn'):[event];}
+function toggleMergeEventSelection(event){const related=relatedMergeEvents(event),remove=related.every(item=>state.mergeSelection.has(item.id));related.forEach(item=>remove?state.mergeSelection.delete(item.id):state.mergeSelection.add(item.id));}
+function mergeReviewSourceId(event){return taskById(event.focusTaskId)?.reviewSourceEventId||event.id;}
+function selectMergeBaseline(selected){
+  const candidates=[],seen=new Set();selected.forEach((event,order)=>{const sourceId=mergeReviewSourceId(event);if(seen.has(sourceId))return;seen.add(sourceId);const reviews=state.reviews.filter(review=>review.sourceEventId===sourceId),completed=reviews.filter(review=>review.completed&&!review.abandoned),related=relatedMergeEvents(event);candidates.push({sourceId,completedCount:completed.length,lastCompletedDate:completed.map(review=>review.completedAt||review.reviewDate).sort().at(-1)||null,taskDate:related.map(item=>item.completedDate||item.date).sort().at(-1)||event.date,order});});
+  return candidates.sort((a,b)=>a.completedCount-b.completedCount||b.taskDate.localeCompare(a.taskDate)||a.order-b.order)[0]||{completedCount:0,lastCompletedDate:null};
+}
+function rebuildMergedReviews(task,source,baseline,strategy){
+  if(!source||!task.reviewSourceEventId)return;removeReviewsForSource(source.id,'events-merged-regenerated');
+  if(strategy==='restart'||!baseline.completedCount){generateReviews(source);return;}
+  const completedCount=Math.min(baseline.completedCount,state.settings.reviewIntervals.length),lastIndex=Math.max(0,completedCount-1),base=parseDate(normalizeDate(baseline.lastCompletedDate||source.completedDate||source.date));
+  state.settings.reviewIntervals.forEach((offset,index)=>{if(index<completedCount)return;const delta=Math.max(1,offset-state.settings.reviewIntervals[lastIndex]);state.reviews.push({id:uid('review'),sourceEventId:source.id,reviewDate:dateKey(addDays(base,delta)),reviewNumber:index+1,intervalDays:offset,...reviewSnapshot(source),completed:false,abandoned:false,regeneratedFromReviewCount:completedCount});});
+}
+function mergeSelectedEvents(name='',strategy=dom.eventMergeStrategy?.value||'least-progress'){
   const selected=[...state.mergeSelection].map(id=>state.events.find(event=>event.id===id)).filter(Boolean).sort((a,b)=>a.date.localeCompare(b.date)||a.startSlot-b.startSlot||a.endSlot-b.endSlot);
   if(selected.length<2){window.alert('请至少选择两条学习事件。');return false;}
   if(selected.some(event=>event.halfZone!=='record'||(event.taskType||'learn')!=='learn')){window.alert('只能合并记录区的学习事件。');return false;}
@@ -462,18 +483,18 @@ function mergeSelectedEvents(name=''){
   if(selected.some(eventHasRunningDependency)){window.alert('请先暂停选中事件及其关联复习。');return false;}
   const selectedIds=new Set(selected.map(event=>event.id)),oldTasks=[...new Set(selected.map(event=>taskById(event.focusTaskId)).filter(Boolean))];
   if(oldTasks.some(task=>state.events.some(event=>event.focusTaskId===task.id&&!selectedIds.has(event.id)))){window.alert('多段任务必须选中它的全部时段后再合并。');return false;}
-  const first=selected[0],last=selected.at(-1),subject=subjectById(first.categoryId),mergedName=String(name||'').trim()||eventTitle(first),sources=new Set(selected.map(event=>event.id));
+  const baseline=selectMergeBaseline(selected),first=selected[0],last=selected.at(-1),subject=subjectById(first.categoryId),mergedName=String(name||'').trim()||eventTitle(first),sources=new Set(selected.map(event=>event.id));
   oldTasks.forEach(task=>{if(task.reviewSourceEventId)sources.add(task.reviewSourceEventId);});
   pushHistory();sources.forEach(sourceId=>removeReviewsForSource(sourceId,'events-merged'));
   oldTasks.forEach(task=>{task.status='abandoned';task.abandonedAt=new Date().toISOString();task.abandonReason='events-merged';task.segmentEventIds=[];task.totalSeconds=0;});
-  const actionTypes=[...new Set(selected.flatMap(event=>event.actionTypes||[]))],fields={eventName:mergedName,materialLocation:uniqueJoined(selected.map(event=>event.materialLocation),'；'),summary:uniqueJoined(selected.map(event=>event.textContent),'\n'),notes:uniqueJoined(selected.map(event=>event.notes),'\n\n'),leftover:uniqueJoined(selected.map(event=>event.leftover),'\n'),mastery:[...selected].reverse().find(event=>event.mastery&&event.mastery!=='unknown')?.mastery||first.mastery||'unknown',actionType:actionTypes[0]||'video',actionTypes:actionTypes.length?actionTypes:['video']};
+  const actionTypes=normalizeActionTypes(selected.flatMap(event=>event.actionTypes||[])),fields={eventName:mergedName,materialLocation:uniqueJoined(selected.map(event=>event.materialLocation),'；'),progress:[...selected].reverse().find(event=>event.progress)?.progress||'',summary:uniqueJoined(selected.map(event=>event.textContent),'\n'),notes:uniqueJoined(selected.map(event=>event.notes),'\n\n'),leftover:uniqueJoined(selected.map(event=>event.leftover),'\n'),mastery:[...selected].reverse().find(event=>event.mastery&&event.mastery!=='unknown')?.mastery||first.mastery||'unknown',actionType:actionTypes[0],actionTypes};
   const task={id:uid('task'),status:'paused',taskType:'learn',categoryId:first.categoryId,categoryName:first.categoryName,subjectPath:[...(first.subjectPath||[first.categoryId])],color:first.color||subject?.color||state.settings.defaultRecordColor,type:'countup',durationSeconds:0,sourceEventId:null,reviewId:null,planEventId:null,leftoverEventId:null,suppressReviews:false,createdAt:new Date(Math.min(...selected.map(event=>eventEndTimestamp(event)))).toISOString(),totalSeconds:selected.reduce((sum,event)=>sum+focusSeconds(event),0),segmentEventIds:selected.map(event=>event.id),fields,mergedSourceEventIds:selected.map(event=>event.id)};
   state.focusTasks.push(task);selected.forEach(event=>{event.focusTaskId=task.id;delete event.sourceEventId;delete event.sourceReviewId;delete event.sourcePlanEventId;});syncTaskRecords(task);
   const completedAt=Math.max(...selected.map(event=>eventEndTimestamp(event)));completeFocusTask(task,completedAt);
-  if(task.reviewSourceEventId&&task.reviewSourceEventId!==first.id){removeReviewsForSource(task.reviewSourceEventId,'events-merged');task.reviewSourceEventId=first.id;let deepest=subject;for(const id of (task.subjectPath||[]).slice(1))deepest=deepest?.children?.find(item=>item.id===id)||deepest;if(deepest?.reviewEnabled!==false)generateReviews(first);}
+  if(task.reviewSourceEventId){const generatedSourceId=task.reviewSourceEventId;if(generatedSourceId!==first.id)removeReviewsForSource(generatedSourceId,'events-merged-regenerated');task.reviewSourceEventId=first.id;rebuildMergedReviews(task,first,baseline,strategy);}
   validateConflicts();state.selectedDetailEventId=first.id;state.mergeMode=false;state.mergeSelection.clear();dom.eventMergeName.value='';saveBackup();renderAll();renderMergeBar();openEventDetail(first.id);return true;
 }
-function submitEventMerge(){mergeSelectedEvents(dom.eventMergeName.value);}
+function submitEventMerge(){mergeSelectedEvents(dom.eventMergeName.value,dom.eventMergeStrategy.value);}
 
 function onCanvasPointerDown(event) {
   if((state.layoutEditing||state.settings.dividerDrag)&&Math.abs(pointerInfo(event).x-layout.planWidth)<=9){
@@ -543,9 +564,9 @@ function openEventModal(event=null,preset=null) {
   dom.eventHalfZone.value=event?.halfZone||preset?.halfZone||state.settings.defaultSelectionZone;dom.eventTaskType.value=event?.taskType==='focus'?'learn':event?.taskType||'learn';dom.eventName.value=event?eventTitle(event):'';dom.eventTextContent.value=event?.textContent||'';
   dom.eventHalfZone.disabled=Boolean(task);dom.eventTaskType.disabled=Boolean(task);dom.eventTaskEditNotice.classList.toggle('hidden',!task);
   dom.eventNotes.value=event?.notes||'';
-  dom.eventMaterialLocation.value=event?.materialLocation||'';dom.eventMastery.value=event?.mastery||'unknown';
+  dom.eventMaterialLocation.value=event?.materialLocation||'';dom.eventProgress.value=event?.progress||'';dom.eventMastery.value=event?.mastery||'unknown';
   dom.eventLeftover.value=event?.leftover||'';dom.eventImportant.checked=Boolean(event?.important);
-  document.querySelectorAll('.event-action-type').forEach((input)=>{input.checked=(event?.actionTypes||[]).includes(input.value);});
+  const selectedAction=normalizeActionTypes(event?.actionTypes)[0];document.querySelectorAll('.event-action-type').forEach((input)=>{input.checked=input.value===selectedAction;});
   const path=event?.subjectPath||[];syncCategoryOptions(event?.categoryId||path[0]);if(path[1])syncSubcategoryOptions(path[1]);if(path[2])syncTopicOptions(path[2]);syncSubjectPicker();
   const subject=subjectById(dom.eventCategory.value);dom.eventColor.value=event?.color||subject?.color||state.settings.defaultPlanColor;dom.eventOpacity.value=event?.opacity??subject?.opacity??.86;
   dom.eventTextSize.value=event?.textSize||subject?.textSize||state.settings.defaultTextSize;dom.eventTextColor.value=event?.textColor||state.settings.defaultTextColor;dom.eventTextOpacity.value=event?.textOpacity??subject?.textOpacity??.92;
@@ -553,7 +574,7 @@ function openEventModal(event=null,preset=null) {
   state.editingEventTime=event?{start:{...start,slot:startSlot},end:{...end,slot:endSlot}}:null;
   dom.eventStartHour.value=start.hour;dom.eventStartMinute.value=start.minute;dom.eventStartSecond.value=start.second;dom.eventEndHour.value=end.hour;dom.eventEndMinute.value=end.minute;dom.eventEndSecond.value=end.second;updateTimeSummary();openModal('eventModal');setTimeout(()=>dom.eventName.focus(),0);
 }
-function selectedActionTypes(){return [...document.querySelectorAll('.event-action-type:checked')].map((input)=>input.value);}
+function selectedActionTypes(){return normalizeActionTypes([...document.querySelectorAll('.event-action-type:checked')].map((input)=>input.value));}
 
 
 
@@ -572,7 +593,7 @@ function saveEvent() {
   if(timeChanged&&!isRangeVisible(range.startSlot,range.endSlot)){window.alert('事件不能跨越隐藏时段。');return;}if(!applySubjectPicker()){dom.eventSubjectPath.reportValidity();return;}
   const nodes=selectedSubjectNodes(),root=nodes[0],next={...(previous||{}),id:state.editingEventId||uid('event'),date:previous?.date||currentDateKey(),halfZone:task?previous.halfZone:dom.eventHalfZone.value,taskType:task?task.taskType:dom.eventTaskType.value,
     categoryId:root?.id||null,categoryName:nodes.map((n)=>n.name).join('/'),subjectPath:nodes.map((n)=>n.id),startSlot:range.startSlot,endSlot:range.endSlot,color:dom.eventColor.value,
-    opacity:Number(dom.eventOpacity.value),eventName:dom.eventName.value.trim()||'学习事件',actionTypes:selectedActionTypes(),materialLocation:dom.eventMaterialLocation.value.trim(),mastery:dom.eventMastery.value,
+    opacity:Number(dom.eventOpacity.value),eventName:dom.eventName.value.trim()||'学习事件',actionTypes:selectedActionTypes().slice(0,1),materialLocation:dom.eventMaterialLocation.value.trim(),progress:dom.eventProgress.value.trim(),mastery:dom.eventMastery.value,
     textContent:dom.eventTextContent.value.trim(),notes:dom.eventNotes.value.trim(),leftover:dom.eventLeftover.value.trim(),important:dom.eventImportant.checked,textSize:clamp(Number(dom.eventTextSize.value)||13,10,24),textColor:dom.eventTextColor.value,textOpacity:clamp(Number(dom.eventTextOpacity.value)||.92,.1,1),conflict:false};
   if(previous?.leftover!==next.leftover)delete next.leftoverCompletedAt;
   if(timeChanged&&(task||Number.isFinite(previous?.focusSeconds)))next.focusSeconds=Math.max(0,Math.round((range.endSlot-range.startSlot)*60000)/1000);
@@ -580,13 +601,13 @@ function saveEvent() {
   if(task){
     if(previous?.leftover!==next.leftover)delete task.leftoverCompletedAt;
     Object.assign(task,{categoryId:next.categoryId,categoryName:next.categoryName,subjectPath:[...next.subjectPath],color:next.color});
-    task.fields={...task.fields,eventName:next.eventName,materialLocation:next.materialLocation,summary:next.textContent,notes:next.notes,leftover:next.leftover,mastery:next.mastery,actionType:next.actionTypes[0]||task.fields.actionType};
+    task.fields={...task.fields,eventName:next.eventName,materialLocation:next.materialLocation,progress:next.progress,summary:next.textContent,notes:next.notes,leftover:next.leftover,mastery:next.mastery,actionType:next.actionTypes[0]||'new',actionTypes:next.actionTypes.length?next.actionTypes:['new']};
     recomputeTaskDuration(task);syncTaskRecords(task);
   }else if(!next.focusTaskId){const deepest=nodes.at(-1),reviewEnabled=next.halfZone==='record'&&next.taskType==='learn'&&deepest?.reviewEnabled!==false;syncGeneratedReviews(next,reviewEnabled);}
   validateConflicts();saveBackup();closeModal('eventModal');state.editingEventId=null;state.editingEventTime=null;renderAll();checkPlanReminders();
 }
 function eventTitle(event){return event?.eventName||event?.knowledgePoint||event?.textContent||event?.categoryName||'学习事件';}
-function reviewSnapshot(event){return{categoryId:event.categoryId,categoryName:event.categoryName,eventName:eventTitle(event),actionTypes:[...(event.actionTypes||[])],materialLocation:event.materialLocation||'',mastery:event.mastery||'unknown',leftover:event.leftover||'',important:Boolean(event.important),textContent:event.textContent||''};}
+function reviewSnapshot(event){return{categoryId:event.categoryId,categoryName:event.categoryName,eventName:eventTitle(event),actionTypes:normalizeActionTypes(event.actionTypes),materialLocation:event.materialLocation||'',mastery:event.mastery||'unknown',leftover:event.leftover||'',important:Boolean(event.important),textContent:event.textContent||''};}
 
 function generateReviews(event){
   if(state.reviews.some(review=>review.sourceEventId===event.id))return;
@@ -628,12 +649,12 @@ function renderEventDetail(){
   const event=state.events.find(item=>item.id===state.selectedDetailEventId);if(!event){closeModal('eventDetailModal');return;}
   const task=taskById(event.focusTaskId),subject=subjectById(event.categoryId),reviewSourceId=task?.reviewSourceEventId||event.id;
   const reviews=state.reviews.filter(review=>review.sourceEventId===reviewSourceId).sort((a,b)=>a.reviewNumber-b.reviewNumber);
-  const actions=(event.actionTypes||[]).map(type=>ACTION_TYPE_LABELS[type]).filter(Boolean),leftover=event.leftover||'',resolved=Boolean(event.leftoverCompletedAt);
+  const actions=normalizeActionTypes(event.actionTypes).map(type=>ACTION_TYPE_LABELS[type]).filter(Boolean),leftover=event.leftover||'',resolved=Boolean(event.leftoverCompletedAt);
   dom.eventDetailTitle.textContent='事件详情';
   const schedule=reviews.length?reviews.map(review=>`<button class="review-schedule-row ${review.completed?'completed':''} ${review.abandoned?'abandoned':''}" data-detail-review="${review.id}"><b>D${reviewIntervalDays(review,event)}</b><span>${review.reviewDate} · 第 ${review.reviewNumber} 次</span><span class="status">${reviewStatusText(review)}</span></button>`).join(''):'<p class="settings-note">未完成的学习任务不会生成复习排期。</p>';
   const segments=(task?state.events.filter(item=>item.focusTaskId===task.id):[event]).sort((a,b)=>a.date.localeCompare(b.date)||a.startSlot-b.startSlot),totalSeconds=task?.totalSeconds??focusSeconds(event),status=task?taskStatusLabel(task.status):'已完成';
   dom.eventDetailBody.innerHTML=`<section class="event-detail-hero" style="--event-color:${subject?.color||event.color||'#527a64'}"><span>${escapeHtml(event.categoryName||'未分类')}</span><h4>${escapeHtml(eventTitle(event))}</h4><p>${escapeHtml(event.materialLocation||'未填写资料定位')}</p>${actions.length?`<small>${escapeHtml(actions.join(' / '))}</small>`:''}</section>
-    <section class="event-detail-section wide"><h4>学习摘要与掌握程度</h4><div class="event-detail-facts"><div><span>学习摘要</span><b>${escapeHtml(event.textContent||'未填写')}</b></div><div><span>掌握程度</span><b>${MASTERY_LABELS[event.mastery]||'尚未判断'}</b></div></div></section>
+    <section class="event-detail-section wide"><h4>学习摘要与掌握程度</h4><div class="event-detail-facts"><div><span>学习摘要</span><b>${escapeHtml(event.textContent||'未填写')}</b></div><div><span>掌握程度</span><b>${MASTERY_LABELS[event.mastery]||'尚未判断'}</b></div>${event.progress?`<div><span>学习进度</span><b>${escapeHtml(event.progress)}</b></div>`:''}</div></section>
     <section class="event-detail-section"><h4>学习笔记</h4><textarea id="detailLearningNotes" class="learning-notes" maxlength="1200" placeholder="自己的理解、推导和易错点">${escapeHtml(event.notes||'')}</textarea><button id="detailSaveLearningBtn" class="tool-btn primary">保存笔记</button></section>
     <section class="event-detail-section"><h4>遗留内容</h4>${leftover?`<div class="detail-leftover ${resolved?'resolved':''}">${escapeHtml(leftover)}</div><div class="detail-section-actions"><button id="detailLeftoverToggleBtn" class="tool-btn">${resolved?'恢复待处理':'标记已解决'}</button>${resolved?'':`<button id="detailLeftoverStartBtn" class="tool-btn primary">开始处理</button>`}</div>`:'<p class="settings-note">没有遗留内容。</p>'}</section>
     <section class="event-detail-section wide"><h4>${status} · 总时长 ${roundedClockLabel(totalSeconds)} · ${segments.length} 段</h4><ul class="task-segments">${segments.map(segment=>`<li>${segment.date} ${eventTimeSecondLabel(segment.startSlot)}–${eventTimeSecondLabel(segment.endSlot)} · ${roundedClockLabel(focusSeconds(segment))}</li>`).join('')}</ul></section>
@@ -650,7 +671,7 @@ function renderEventDetail(){
 
 function saveEventLearningDetails(){const event=state.events.find(item=>item.id===state.selectedDetailEventId);if(!event)return;pushHistory();event.notes=document.getElementById('detailLearningNotes')?.value.trim()||'';const task=taskById(event.focusTaskId);if(task){task.fields.notes=event.notes;syncTaskRecords(task);}saveBackup();renderEventDetail();}
 
-function taskFieldsFromEvent(event){const actionTypes=[...(event.actionTypes||[])];return{eventName:eventTitle(event),materialLocation:event.materialLocation||'',summary:event.textContent||'',notes:event.notes||'',leftover:event.leftover||'',mastery:event.mastery||'unknown',actionType:actionTypes[0]||'video',actionTypes:actionTypes.length?actionTypes:['video']};}
+function taskFieldsFromEvent(event){const actionTypes=normalizeActionTypes(event.actionTypes);return{eventName:eventTitle(event),materialLocation:event.materialLocation||'',progress:event.progress||'',summary:event.textContent||'',notes:event.notes||'',leftover:event.leftover||'',mastery:event.mastery||'unknown',actionType:actionTypes[0],actionTypes};}
 function reopenCompletedEvent(id){
   const event=state.events.find(item=>item.id===id);if(!event||event.halfZone!=='record'||(event.taskType||'learn')!=='learn')return false;
   if(eventHasRunningDependency(event)){window.alert('请先暂停这个任务及其关联复习。');return false;}
@@ -703,7 +724,7 @@ function refreshReviewDay(){if(state.reviewDayKey===dateKey(new Date()))return f
 
 function closePlanReminder(){closeModal('planReminderModal');state.pendingPlanReminderId=null;document.title='学习日志时间轴';}
 function showPlanReminder(event){
-  const subject=subjectById(event.categoryId),actions=(event.actionTypes||[]).map((type)=>ACTION_TYPE_LABELS[type]).filter(Boolean);state.pendingPlanReminderId=event.id;dom.planReminderModal.style.setProperty('--plan-color',subject?.color||event.color||'#2f6b4f');dom.planReminderSubject.textContent=event.categoryName||subject?.name||'学习计划';dom.planReminderTime.textContent=`${slotLabel(event.startSlot)} - ${slotLabel(event.endSlot)}`;dom.planReminderTitle.textContent=eventTitle(event);dom.planReminderActions.innerHTML=actions.map((action)=>`<span>${escapeHtml(action)}</span>`).join('');dom.planReminderLocation.textContent=event.materialLocation?`资料定位 · ${event.materialLocation}`:(event.textContent||'准备开始本次计划');document.title=`⏰ ${dom.planReminderTitle.textContent}`;openModal('planReminderModal');playReminderSound();showSystemNotification('计划时间到了',`${event.categoryName||'学习计划'} · ${dom.planReminderTitle.textContent}`);dom.planReminderStartBtn.focus();
+  const subject=subjectById(event.categoryId),actions=normalizeActionTypes(event.actionTypes).map((type)=>ACTION_TYPE_LABELS[type]).filter(Boolean);state.pendingPlanReminderId=event.id;dom.planReminderModal.style.setProperty('--plan-color',subject?.color||event.color||'#2f6b4f');dom.planReminderSubject.textContent=event.categoryName||subject?.name||'学习计划';dom.planReminderTime.textContent=`${slotLabel(event.startSlot)} - ${slotLabel(event.endSlot)}`;dom.planReminderTitle.textContent=eventTitle(event);dom.planReminderActions.innerHTML=actions.map((action)=>`<span>${escapeHtml(action)}</span>`).join('');dom.planReminderLocation.textContent=event.materialLocation?`资料定位 · ${event.materialLocation}`:(event.textContent||'准备开始本次计划');document.title=`⏰ ${dom.planReminderTitle.textContent}`;openModal('planReminderModal');playReminderSound();showSystemNotification('计划时间到了',`${event.categoryName||'学习计划'} · ${dom.planReminderTitle.textContent}`);dom.planReminderStartBtn.focus();
 }
 function checkPlanReminders(){
   if(refreshReviewDay())renderReviews();
@@ -737,7 +758,7 @@ function suggestedReviewStart(review,source=reviewSource(review)){const previous
 
 function reviewCard(review){
   const source=reviewSource(review),name=eventTitle(source||review),material=source?.materialLocation??review.materialLocation??'',mastery=review.mastery||source?.mastery||'unknown';
-  const actions=source?.actionTypes||review.actionTypes||[],task=state.focusTasks.find(item=>item.reviewId===review.id&&['paused','running'].includes(item.status));
+  const actions=normalizeActionTypes(source?.actionTypes||review.actionTypes),task=state.focusTasks.find(item=>item.reviewId===review.id&&['paused','running'].includes(item.status));
   const status=review.completed?'已完成':review.abandoned?'已放弃':task?taskStatusLabel(task.status):review.originalReviewDate&&review.originalReviewDate<review.reviewDate?`由 ${review.originalReviewDate} 顺延`:'';
   return `<article class="review-item ${review.completed?'done':''} ${review.abandoned?'abandoned':''}"><div class="review-topline"><span class="review-meta">${reviewIntervalLabel(review,source)} · 第 ${review.reviewNumber} 次 · ${review.reviewDate}${status?' · '+status:''}</span>${review.important||source?.important?'<span class="review-important">★ 重点</span>':''}</div><button class="review-title-button" data-review-detail="${review.id}"><strong>${escapeHtml(name)}</strong>${material?`<span class="review-material">${escapeHtml(material)}</span>`:''}</button><div class="review-tags">${actions.map(type=>`<span>${escapeHtml(ACTION_TYPE_LABELS[type]||type)}</span>`).join('')}<span class="mastery-badge mastery-${MASTERY_LABELS[mastery]?mastery:'unknown'}">${MASTERY_LABELS[mastery]||'尚未判断'}</span></div><div class="review-actions"><button class="tool-btn primary" data-review-start="${review.id}" ${review.completed||review.abandoned||task?.status==='running'?'disabled':''}>${task?.status==='paused'?'继续复习':task?.status==='running'?'复习中':'开始复习'}</button><button class="tool-btn" data-review-detail="${review.id}">查看详情</button><button class="tool-btn" data-review-complete="${review.id}">${review.completed?'恢复':'直接完成'}</button><button class="tool-btn" data-review-delay="${review.id}">推迟</button><button class="tool-btn" data-review-abandon="${review.id}">${review.abandoned?'恢复':'放弃本次'}</button></div></article>`;
 }
@@ -770,7 +791,7 @@ function reviewHistoryRow(review,currentId){
 function openReviewDetail(id){state.selectedReviewId=id;renderReviewDetail();openModal('reviewDetailModal');}
 function renderReviewDetail(){
   const review=state.reviews.find(item=>item.id===state.selectedReviewId),source=reviewSource(review||{});if(!review||!source){closeModal('reviewDetailModal');return;}
-  const subject=subjectById(source.categoryId),name=eventTitle(source),material=source.materialLocation||review.materialLocation||'未填写',mastery=review.mastery||source.mastery||'unknown',actions=source.actionTypes||review.actionTypes||[];
+  const subject=subjectById(source.categoryId),name=eventTitle(source),material=source.materialLocation||review.materialLocation||'未填写',mastery=review.mastery||source.mastery||'unknown',actions=normalizeActionTypes(source.actionTypes||review.actionTypes);
   const history=state.reviews.filter(item=>item.sourceEventId===review.sourceEventId).sort((a,b)=>a.reviewNumber-b.reviewNumber);
   dom.reviewDetailTitle.textContent=name;
   dom.reviewDetailBasic.innerHTML=`<div class="review-detail-hero" style="--detail-color:${subject?.color||source.color||'#6b7a72'}"><span>${escapeHtml(source.categoryName||'未分类')}</span><strong>${reviewIntervalLabel(review,source)} · 第 ${review.reviewNumber} 次复习</strong></div><div class="review-detail-facts"><div><span>安排日期</span><b>${review.reviewDate}</b></div><div><span>掌握程度</span><b>${MASTERY_LABELS[mastery]||'尚未判断'}</b></div><div><span>学习动作</span><b>${escapeHtml(actions.map(type=>ACTION_TYPE_LABELS[type]).filter(Boolean).join(' / ')||'未标记')}</b></div></div><label class="review-start-point"><span>本次从哪里开始</span><input id="reviewStartPointInput" type="text" maxlength="100" value="${escapeHtml(suggestedReviewStart(review,source))}" placeholder="例如：讲义 P69" /></label>`;
@@ -822,12 +843,13 @@ function delayReview(id) {
 function openCalendar(){refreshReviewDay();state.calendarMonth=startOfMonth(state.currentDate);renderCalendar();openModal('calendarModal');}
 function calendarHeatLevel(seconds){return seconds>0?clamp(Math.floor(seconds/3600),1,10):0;}
 function calendarHeatColor(seconds){return ['transparent','#e0efe1','#c9e4cd','#afd7b8','#93cba1','#75bc89','#58aa72','#40965d','#2e814c','#206c3d','#125730'][calendarHeatLevel(seconds)];}
+function calendarDurationLabel(seconds){const value=Math.max(0,Number(seconds)||0);if(value<60)return value?`${Math.max(1,Math.round(value))}s`:'0m';const mins=Math.floor(value/60);if(mins<60)return`${mins}m`;const hours=Math.floor(value/360)/10;return`${Number.isInteger(hours)?hours:hours.toFixed(1)}h`;}
 function renderCalendar() {
   const month=state.calendarMonth,year=month.getFullYear(),m=month.getMonth(),firstWeekday=(month.getDay()+6)%7,days=new Date(year,m+1,0).getDate();
   dom.calendarTitle.textContent=`${year} 年 ${m+1} 月`;const cells=['一','二','三','四','五','六','日'].map((d)=>`<div class="calendar-weekday">周${d}</div>`);
   for(let i=0;i<42;i+=1){const day=i-firstWeekday+1,date=new Date(year,m,day),key=dateKey(date),outside=date.getMonth()!==m;
     const records=state.events.filter((e)=>e.date===key&&e.halfZone==='record'),seconds=records.reduce((sum,e)=>sum+focusSeconds(e),0),reviews=state.reviews.filter((r)=>r.reviewDate===key&&!r.completed&&!r.abandoned).length;
-    cells.push(`<button class="calendar-day ${outside?'outside':''} ${key===dateKey(new Date())?'today':''}" data-calendar-date="${key}"><div class="calendar-day-heading"><span class="calendar-day-number">${date.getDate()}</span>${seconds?`<span class="calendar-day-duration" data-heat-level="${calendarHeatLevel(seconds)}" style="background:${calendarHeatColor(seconds)};color:${calendarHeatLevel(seconds)>=6?'#fff':'#203b29'}">${durationLabel(seconds)}</span>`:''}</div>${reviews?`<div class="calendar-day-summary">${reviews}待复习</div>`:''}<div class="calendar-day-events">${records.map((e)=>{const name=eventTitle(e),duration=durationLabel(focusSeconds(e));return`<div class="calendar-event" title="${escapeHtml(name)} · ${duration}" style="--calendar-event-color:${subjectById(e.categoryId)?.color||e.color||'#aeb5ae'}"><span class="calendar-event-label">${escapeHtml(name)}</span><span class="calendar-event-duration">${duration}</span></div>`;}).join('')}</div></button>`);
+    cells.push(`<button class="calendar-day ${outside?'outside':''} ${key===dateKey(new Date())?'today':''}" data-calendar-date="${key}"><div class="calendar-day-heading"><span class="calendar-day-number">${date.getDate()}</span>${seconds?`<span class="calendar-day-duration" data-heat-level="${calendarHeatLevel(seconds)}" title="当日学习总时长 ${durationLabel(seconds)}" style="background:${calendarHeatColor(seconds)};color:${calendarHeatLevel(seconds)>=6?'#fff':'#203b29'}">${calendarDurationLabel(seconds)}</span>`:''}</div>${reviews?`<div class="calendar-day-summary">${reviews}待复习</div>`:''}<div class="calendar-day-events">${records.map((e)=>{const name=eventTitle(e),duration=durationLabel(focusSeconds(e));return`<div class="calendar-event" title="${escapeHtml(name)} · ${duration}" style="--calendar-event-color:${subjectById(e.categoryId)?.color||e.color||'#aeb5ae'}"><span class="calendar-event-label">${escapeHtml(name)}</span><span class="calendar-event-duration">${duration}</span></div>`;}).join('')}</div></button>`);
   }dom.monthCalendar.innerHTML=cells.join('');dom.monthCalendar.querySelectorAll('[data-calendar-date]').forEach((b)=>b.onclick=()=>{state.currentDate=startOfDay(parseDate(b.dataset.calendarDate));closeModal('calendarModal');saveBackup();renderAll();});
 }
 
@@ -880,7 +902,7 @@ function focusSeconds(event){if(Number.isFinite(event.focusSeconds)&&event.focus
 const ORPHAN_STATS_ID='__uncategorized__';
 function statsFilterRoots(){return [...state.categories,...(focusEvents().some(event=>!subjectById(event.categoryId))?[{id:ORPHAN_STATS_ID,name:'未分类 / 已删除学科',children:[]}]:[])];}
 function openStats() {
-  dom.statsRange.value='day';state.statsSubjects=new Set(statsFilterRoots().flatMap(subjectSubtreeIds));const today=new Date(),monthStart=new Date(today.getFullYear(),today.getMonth(),1);if(!dom.statsCustomFrom.value)dom.statsCustomFrom.value=dateKey(monthStart);if(!dom.statsCustomTo.value)dom.statsCustomTo.value=dateKey(today);renderStatsFilters();updateStatsRangeUI();openModal('statsModal');renderStats();
+  dom.statsRange.value='day';state.statsAnchor=startOfDay(new Date());state.statsSubjects=new Set(statsFilterRoots().flatMap(subjectSubtreeIds));const today=new Date(),monthStart=new Date(today.getFullYear(),today.getMonth(),1);if(!dom.statsCustomFrom.value)dom.statsCustomFrom.value=dateKey(monthStart);if(!dom.statsCustomTo.value)dom.statsCustomTo.value=dateKey(today);renderStatsFilters();updateStatsRangeUI();openModal('statsModal');renderStats();
 }
 function updateStatsRangeUI(){dom.statsCustomRange.classList.toggle('hidden',dom.statsRange.value!=='custom');}
 function flattenSubjectOptions() {
@@ -905,20 +927,24 @@ function renderStatsFilters() {
 }
 function learningReviewTotals(events){return events.reduce((totals,event)=>{totals[event.taskType==='review'?'review':'learn']+=focusSeconds(event);return totals;},{learn:0,review:0});}
 
+function statsPeriodText(){const anchor=state.statsAnchor||startOfDay(new Date()),range=dom.statsRange.value;if(range==='day')return `${anchor.getFullYear()}-${pad(anchor.getMonth()+1)}-${pad(anchor.getDate())}`;if(range==='week'){const start=addDays(anchor,-((anchor.getDay()+6)%7)),end=addDays(start,6);return `${pad(start.getMonth()+1)}.${pad(start.getDate())}–${pad(end.getMonth()+1)}.${pad(end.getDate())}`;}if(range==='month')return `${anchor.getFullYear()} 年 ${anchor.getMonth()+1} 月`;if(range==='year')return `${anchor.getFullYear()} 年`;return `${dom.statsCustomFrom.value||'起始'} – ${dom.statsCustomTo.value||'今日'}`;}
+function shiftStatsPeriod(amount){const range=dom.statsRange.value,anchor=state.statsAnchor||startOfDay(new Date());if(range==='day')state.statsAnchor=addDays(anchor,amount);else if(range==='week')state.statsAnchor=addDays(anchor,amount*7);else if(range==='month')state.statsAnchor=addMonths(anchor,amount);else if(range==='year')state.statsAnchor=new Date(anchor.getFullYear()+amount,anchor.getMonth(),anchor.getDate());else{const from=parseDate(dom.statsCustomFrom.value),to=parseDate(dom.statsCustomTo.value),span=Math.max(1,daysBetween(from,to)+1);if(!Number.isNaN(from.getTime()))dom.statsCustomFrom.value=dateKey(addDays(from,amount*span));if(!Number.isNaN(to.getTime()))dom.statsCustomTo.value=dateKey(addDays(to,amount*span));}renderStats();}
+
 function renderStats() {
-  const all=focusEvents().filter(e=>!subjectById(e.categoryId)?state.statsSubjects.has(ORPHAN_STATS_ID):(e.subjectPath?.length?e.subjectPath:[e.categoryId]).some(id=>state.statsSubjects.has(id))),todayKey=dateKey(new Date()),today=all.filter((e)=>e.date===todayKey);
+  const all=focusEvents().filter(e=>!subjectById(e.categoryId)?state.statsSubjects.has(ORPHAN_STATS_ID):(e.subjectPath?.length?e.subjectPath:[e.categoryId]).some(id=>state.statsSubjects.has(id))),anchor=state.statsAnchor||startOfDay(new Date()),anchorKey=dateKey(anchor),today=all.filter((e)=>e.date===anchorKey);
   const ranged=filterStatsRange(all,dom.statsRange.value),totalSeconds=ranged.reduce((sum,e)=>sum+focusSeconds(e),0),activeDays=new Set(ranged.map((e)=>e.date)).size||1;
+  dom.statsPeriodLabel.textContent=statsPeriodText();dom.statDayTitle.textContent=`${anchor.getMonth()+1}月${anchor.getDate()}日专注`;dom.statMonthTitle.textContent=`${anchor.getFullYear()}年${anchor.getMonth()+1}月每日专注`;dom.statYearTitle.textContent=`${anchor.getFullYear()}年每月专注`;
   dom.statTotalCount.textContent=ranged.length;dom.statTotalTime.textContent=durationLabel(totalSeconds);dom.statDailyAverage.textContent=durationLabel(totalSeconds/activeDays);
   dom.statTodayCount.textContent=today.length;dom.statTodayTime.textContent=durationLabel(today.reduce((sum,e)=>sum+focusSeconds(e),0));
   const split=learningReviewTotals(today),sum=split.learn+split.review,reviewPercent=sum?Math.round(split.review/sum*1000)/10:0,learnPercent=sum?Math.round((100-reviewPercent)*10)/10:0;dom.statTodaySplit.innerHTML=`<span>学习 <b>${durationLabel(split.learn)}</b> · ${learnPercent}%</span><span>复习 <b>${durationLabel(split.review)}</b> · ${reviewPercent}%</span>`;drawDistributionChart(filterStatsRange(all,dom.statsRange.value));drawMonthlyChart(all);drawYearlyChart(all);
   Object.entries(state.statVisibility).forEach(([key,visible])=>document.querySelector(`[data-stat-section="${key}"]`)?.classList.toggle('stat-hidden',!visible));
 }
 function filterStatsRange(events,range) {
-  const today=startOfDay(new Date());
-  if(range==='day')return events.filter((e)=>e.date===dateKey(today));
-  if(range==='week'){const monday=addDays(today,-((today.getDay()+6)%7));return events.filter((e)=>{const d=parseDate(e.date);return d>=monday&&d<addDays(monday,7);});}
-  if(range==='month')return events.filter((e)=>{const d=parseDate(e.date);return d.getFullYear()===today.getFullYear()&&d.getMonth()===today.getMonth();});
-  if(range==='year')return events.filter((e)=>parseDate(e.date).getFullYear()===today.getFullYear());
+  const anchor=state.statsAnchor||startOfDay(new Date());
+  if(range==='day')return events.filter((e)=>e.date===dateKey(anchor));
+  if(range==='week'){const monday=addDays(anchor,-((anchor.getDay()+6)%7));return events.filter((e)=>{const d=parseDate(e.date);return d>=monday&&d<addDays(monday,7);});}
+  if(range==='month')return events.filter((e)=>{const d=parseDate(e.date);return d.getFullYear()===anchor.getFullYear()&&d.getMonth()===anchor.getMonth();});
+  if(range==='year')return events.filter((e)=>parseDate(e.date).getFullYear()===anchor.getFullYear());
   const from=dom.statsCustomFrom.value,to=dom.statsCustomTo.value;return events.filter((e)=>(!from||e.date>=from)&&(!to||e.date<=to));
 }
 function toggleStat(key){state.statVisibility[key]=!state.statVisibility[key];renderStats();}
@@ -957,21 +983,22 @@ function drawDistributionPie(c,width,height,totals){
 }
 
 function drawMonthlyChart(events) {
-  const now=new Date(),days=new Date(now.getFullYear(),now.getMonth()+1,0).getDate(),values=Array.from({length:days},(_,i)=>events.filter((e)=>e.date===dateKey(new Date(now.getFullYear(),now.getMonth(),i+1))).reduce((s,e)=>s+focusSeconds(e)/60,0));
-  drawLineChart(dom.monthlyChart,values,values.map((_,i)=>String(i+1)),1,60);
+  const now=state.statsAnchor||new Date(),days=new Date(now.getFullYear(),now.getMonth()+1,0).getDate(),values=Array.from({length:days},(_,i)=>events.filter((e)=>e.date===dateKey(new Date(now.getFullYear(),now.getMonth(),i+1))).reduce((s,e)=>s+focusSeconds(e)/60,0));
+  drawLineChart(dom.monthlyChart,values,values.map((_,i)=>String(i+1)),60);
 }
 function drawYearlyChart(events) {
-  const year=new Date().getFullYear(),values=Array.from({length:12},(_,i)=>events.filter((e)=>parseDate(e.date).getFullYear()===year&&parseDate(e.date).getMonth()===i).reduce((s,e)=>s+focusSeconds(e)/3600,0));
-  drawLineChart(dom.yearlyChart,values,values.map((_,i)=>`${i+1}月`),1,3600);
+  const year=(state.statsAnchor||new Date()).getFullYear(),values=Array.from({length:12},(_,i)=>events.filter((e)=>parseDate(e.date).getFullYear()===year&&parseDate(e.date).getMonth()===i).reduce((s,e)=>s+focusSeconds(e)/3600,0));
+  drawLineChart(dom.yearlyChart,values,values.map((_,i)=>`${i+1}月`),3600);
 }
-function drawLineChart(canvasEl,values,labels,labelEvery,secondsPerUnit=60) {
-  canvasEl.style.minWidth=`${values.length*(secondsPerUnit===3600?82:64)+46}px`;canvasEl.setAttribute('aria-label',values.map((value,i)=>`${labels[i]}${secondsPerUnit===60?'日':''} ${durationLabel(value*secondsPerUnit)}`).join('；'));
+function compactDurationLabel(seconds){const value=Math.max(0,Number(seconds)||0);if(value<60)return value?`${Math.round(value)}s`:'0';if(value<3600)return`${Math.round(value/60)}m`;const hours=Math.round(value/360)/10;return`${Number.isInteger(hours)?hours:hours.toFixed(1)}h`;}
+function drawLineChart(canvasEl,values,labels,secondsPerUnit=60) {
+  canvasEl.style.minWidth='0';canvasEl.setAttribute('aria-label',values.map((value,i)=>`${labels[i]}${secondsPerUnit===60?'日':''} ${durationLabel(value*secondsPerUnit)}`).join('；'));
   const {c,width,height}=prepareChart(canvasEl),padX=42,padY=24,w=width-padX-42,h=height-padY-30,max=Math.max(1,...values);
   c.strokeStyle='#e4e7e2';c.lineWidth=1;for(let i=0;i<=4;i++){const y=padY+h*i/4;c.beginPath();c.moveTo(padX,y);c.lineTo(width-10,y);c.stroke();}
   c.strokeStyle='#2f6b4f';c.lineWidth=2;c.beginPath();values.forEach((value,i)=>{const x=padX+(values.length===1?0:i/(values.length-1))*w,y=padY+h-value/max*h;if(i)c.lineTo(x,y);else c.moveTo(x,y);});c.stroke();
   c.fillStyle='#2f6b4f';values.forEach((value,i)=>{const x=padX+(values.length===1?0:i/(values.length-1))*w,y=padY+h-value/max*h;c.beginPath();c.arc(x,y,2.5,0,Math.PI*2);c.fill();});
-  c.fillStyle='#333';c.font='bold 11px "Segoe UI"';c.textAlign='center';values.forEach((value,i)=>{const x=padX+i/(values.length-1)*w,y=padY+h-value/max*h;c.fillText(durationLabel(value*secondsPerUnit),x,y-9);});
-  c.fillStyle='#555';c.font='9px "Segoe UI"';c.textAlign='center';labels.forEach((label,i)=>{if(i%labelEvery===0){const x=padX+(labels.length===1?0:i/(labels.length-1))*w;c.fillText(label,x,height-8);}});
+  c.fillStyle='#333';c.font='bold 9px "Segoe UI"';c.textAlign='center';values.forEach((value,i)=>{const x=padX+(values.length===1?0:i/(values.length-1))*w,y=padY+h-value/max*h-(i%2?7:13);c.fillText(compactDurationLabel(value*secondsPerUnit),x,y);});
+  const labelEvery=Math.max(1,Math.ceil(labels.length/Math.max(6,Math.floor(w/34))));c.fillStyle='#555';c.font='9px "Segoe UI"';c.textAlign='center';labels.forEach((label,i)=>{if(i%labelEvery===0||i===labels.length-1){const x=padX+(labels.length===1?0:i/(labels.length-1))*w;c.fillText(label,x,height-8);}});
 }
 function drawEmptyChart(c,width,height){c.fillStyle='#9aa09a';c.font='12px "Segoe UI"';c.textAlign='center';c.fillText('暂无专注记录',width/2,height/2);}
 
@@ -1035,7 +1062,7 @@ function taskStatusLabel(status){return{running:'进行中',paused:'未完成',c
 function ensureFocusImmersionFields(focus=state.focus){
   if(!focus)return null;
   const source=focusSource(focus),previous=focus.immersiveFields||taskById(focus.taskId)?.fields||{};
-  const actionType=previous.actionType??source?.actionTypes?.[0]??(focus.taskType==='review'?'review':'video');focus.immersiveFields={eventName:previous.eventName??previous.knowledgePoint??(source?eventTitle(source):''),materialLocation:previous.materialLocation??focus.reviewStartPoint??focus.planStartPoint??source?.materialLocation??'',summary:previous.summary??'',notes:previous.notes??focus.liveNotes??source?.notes??'',leftover:previous.leftover??source?.leftover??'',actionType,actionTypes:Array.isArray(previous.actionTypes)?[...previous.actionTypes]:[...(source?.actionTypes||[actionType])],mastery:previous.mastery??source?.mastery??'unknown'};
+  const actionTypes=normalizeActionTypes(previous.actionTypes||previous.actionType||source?.actionTypes),actionType=actionTypes[0];focus.immersiveFields={eventName:previous.eventName??previous.knowledgePoint??(source?eventTitle(source):''),materialLocation:previous.materialLocation??focus.reviewStartPoint??focus.planStartPoint??source?.materialLocation??'',progress:previous.progress??source?.progress??'',summary:previous.summary??'',notes:previous.notes??focus.liveNotes??source?.notes??'',leftover:previous.leftover??source?.leftover??'',actionType,actionTypes,mastery:previous.mastery??source?.mastery??'unknown'};
   focus.liveNotes=focus.immersiveFields.notes;return focus.immersiveFields;
 }
 function ensureFocusTask(focus=state.focus){
@@ -1046,12 +1073,12 @@ function ensureFocusTask(focus=state.focus){
     task={id:focus.taskId||uid('task'),status:'running',taskType:focus.taskType||'learn',categoryId:focus.categoryId,categoryName:focus.categoryName,subjectPath:focus.subjectPath||source?.subjectPath||[focus.categoryId],color:focus.color,type:focus.type||'countup',durationSeconds:focus.durationSeconds||0,sourceEventId:focus.sourceEventId||null,reviewId:focus.reviewId||null,planEventId:focus.planEventId||null,leftoverEventId:focus.leftoverEventId||null,suppressReviews:Boolean(focus.suppressReviews),createdAt:new Date(focus.startedAt).toISOString(),totalSeconds:0,segmentEventIds:[],fields:clone(fields)};
     state.focusTasks.push(task);
   }
-  focus.taskId=task.id;focus.segmentId=focus.segmentId||uid('segment');focus.elapsedBefore=Number(task.totalSeconds)||0;
+  focus.taskId=task.id;focus.segmentId=focus.segmentId||uid('segment');focus.elapsedBefore=Math.max(0,Number(focus.elapsedBefore)||0);
   task.status='running';task.fields=clone(fields);return task;
 }
 function renderUnfinishedTasks(){
   const tasks=state.focusTasks.filter(task=>task.status==='paused');dom.unfinishedTaskPanel.classList.toggle('hidden',!tasks.length);
-  const markup=tasks.map(task=>`<article class="unfinished-task"><strong>${escapeHtml(task.fields.eventName||task.categoryName+'任务')}</strong><small>${task.taskType==='review'?'复习':'学习'} · ${escapeHtml(task.categoryName)} · 累计 ${clockLabel(task.totalSeconds)} · ${task.segmentEventIds.length} 段</small>${task.fields.leftover?`<p>待完成：${escapeHtml(task.fields.leftover)}</p>`:''}<div class="unfinished-task-actions"><button class="tool-btn primary" data-task-resume="${task.id}" ${state.focus||state.pendingFocus?'disabled':''}>继续</button><button class="tool-btn" data-task-finish="${task.id}" ${state.focus||state.pendingFocus?'disabled':''}>标记完成</button><button class="tool-btn" data-task-abandon="${task.id}">放弃</button></div></article>`).join('');
+  const markup=tasks.map(task=>`<article class="unfinished-task"><strong>${escapeHtml(task.fields.eventName||task.categoryName+'任务')}</strong><small>${task.taskType==='review'?'复习':'学习'} · ${escapeHtml(task.categoryName)} · 累计 ${clockLabel(task.totalSeconds)} · ${task.segmentEventIds.length} 段</small>${task.fields.progress?`<p>学习进度：${escapeHtml(task.fields.progress)}</p>`:''}${task.fields.leftover?`<p>待完成：${escapeHtml(task.fields.leftover)}</p>`:''}<div class="unfinished-task-actions"><button class="tool-btn primary" data-task-resume="${task.id}" ${state.focus||state.pendingFocus?'disabled':''}>继续</button><button class="tool-btn" data-task-finish="${task.id}" ${state.focus||state.pendingFocus?'disabled':''}>标记完成</button><button class="tool-btn" data-task-abandon="${task.id}">放弃</button></div></article>`).join('');
   if(state.unfinishedMarkup===markup)return;state.unfinishedMarkup=markup;dom.unfinishedTaskList.innerHTML=markup;
   dom.unfinishedTaskList.querySelectorAll('[data-task-resume]').forEach(button=>button.onclick=()=>resumeFocusTask(button.dataset.taskResume));
   dom.unfinishedTaskList.querySelectorAll('[data-task-finish]').forEach(button=>button.onclick=()=>openTaskCompletion(button.dataset.taskFinish));
@@ -1063,7 +1090,7 @@ function syncTaskRecords(task){
   if(records.some(event=>Object.hasOwn(event,'leftover')&&event.leftover!==(fields.leftover||''))){delete task.leftoverCompletedAt;records.forEach(event=>delete event.leftoverCompletedAt);}
   if(state.focus?.taskId===task.id){Object.assign(state.focus,{categoryId:task.categoryId,categoryName:task.categoryName,subjectPath:task.subjectPath,color:task.color});state.focus.immersiveFields=clone(fields);state.focus.liveNotes=fields.notes||'';saveActiveFocus();}
   state.events.filter(event=>event.focusTaskId===task.id).forEach(event=>{
-    const actionTypes=Array.isArray(fields.actionTypes)&&fields.actionTypes.length?[...fields.actionTypes]:[fields.actionType||(task.taskType==='review'?'review':'video')];Object.assign(event,{categoryId:task.categoryId,categoryName:task.categoryName,subjectPath:[...(task.subjectPath||[task.categoryId])],color:task.color,eventName:fields.eventName||task.categoryName+'任务',materialLocation:fields.materialLocation||'',textContent:fields.summary||'',notes:fields.notes||'',leftover:fields.leftover||'',mastery:fields.mastery||'unknown',actionTypes,taskStatus:task.status});
+    const actionTypes=normalizeActionTypes(fields.actionTypes||fields.actionType);Object.assign(event,{categoryId:task.categoryId,categoryName:task.categoryName,subjectPath:[...(task.subjectPath||[task.categoryId])],color:task.color,eventName:fields.eventName||task.categoryName+'任务',materialLocation:fields.materialLocation||'',progress:fields.progress||'',textContent:fields.summary||'',notes:fields.notes||'',leftover:fields.leftover||'',mastery:fields.mastery||'unknown',actionTypes,taskStatus:task.status});
   });
   records.forEach(event=>{const owner=leftoverOwner(event),resolved=owner.leftoverCompletedAt||(owner.focusTaskId===task.id?task.leftoverCompletedAt:null);if(resolved)event.leftoverCompletedAt=resolved;else delete event.leftoverCompletedAt;});
   if(task.reviewSourceEventId){const source=state.events.find(event=>event.id===task.reviewSourceEventId);if(source){state.reviews.filter(review=>review.sourceEventId===source.id).forEach(review=>{const mastery=review.mastery;Object.assign(review,reviewSnapshot(source));if(review.completed)review.mastery=mastery;});syncPausedReviewSource(source);}}
@@ -1103,8 +1130,7 @@ function resumeFocusTask(id){
   const task=taskById(id);if(!task||task.status!=='paused')return;
   if(state.focus||state.pendingFocus){window.alert('请先暂停或处理当前任务。');return;}
   if(task.reviewId){const review=state.reviews.find(item=>item.id===task.reviewId);if(!review||review.completed||review.abandoned){window.alert('本次复习已结束，无法继续。');return;}}
-  const type=task.type==='countdown'&&task.totalSeconds>=task.durationSeconds?'countup':task.type;
-  state.focus={taskId:task.id,categoryId:task.categoryId,categoryName:task.categoryName,subjectPath:task.subjectPath,color:task.color,type,durationSeconds:task.durationSeconds,taskType:task.taskType,startedAt:Date.now(),elapsedBefore:task.totalSeconds,sourceEventId:task.sourceEventId,reviewId:task.reviewId,planEventId:task.planEventId,leftoverEventId:task.leftoverEventId,suppressReviews:task.suppressReviews,immersiveFields:clone(task.fields)};
+  state.focus={taskId:task.id,categoryId:task.categoryId,categoryName:task.categoryName,subjectPath:task.subjectPath,color:task.color,type:task.type,durationSeconds:task.durationSeconds,taskType:task.taskType,startedAt:Date.now(),elapsedBefore:0,sourceEventId:task.sourceEventId,reviewId:task.reviewId,planEventId:task.planEventId,leftoverEventId:task.leftoverEventId,suppressReviews:task.suppressReviews,immersiveFields:clone(task.fields)};
   beginFocusRuntime();
 }
 function abandonFocusTask(id){
@@ -1122,9 +1148,9 @@ function openTaskCompletion(id){
   dom.focusDetailTitle.textContent=task.taskType==='review'?'结束本次复习':'结束学习任务';
   dom.focusSummary.textContent=`${task.categoryName} · 累计 ${clockLabel(task.totalSeconds)} · ${task.segmentEventIds.length} 段`;
   dom.focusResultName.value=fields.eventName||'';dom.focusResultSummary.value=fields.summary||'';dom.focusResultLeftover.value=fields.leftover||'';
-  dom.focusCompletionStatus.value='completed';dom.focusStartPoint.value=fields.materialLocation||'';dom.focusEndPoint.value='';
+  dom.focusCompletionStatus.value='completed';dom.focusStartPoint.value=fields.materialLocation||'';dom.focusEndPoint.value=fields.progress||'';
   dom.focusResultMastery.value=fields.mastery||'unknown';dom.focusDetailText.value=fields.notes||'';
-  dom.focusStartLabel.textContent='资料定位 / 本次起点';dom.focusEndLabel.textContent='本次终点（选填）';dom.focusDetailLabel.textContent='学习笔记';
+  dom.focusStartLabel.textContent=task.taskType==='review'?'本次起点':'资料定位';dom.focusEndLabel.textContent=task.taskType==='review'?'本次终点（选填）':'学到哪（选填）';dom.focusDetailLabel.textContent='学习笔记';
   openModal('focusDetailModal');renderUnfinishedTasks();
 }
 function completeFocusTask(task,completedAt=Date.now()){
@@ -1180,16 +1206,17 @@ function renderFocus(){
   [dom.stopFocusBtn,dom.pauseFocusBtn,dom.enterImmersionBtn,dom.focusLiveNote].forEach(el=>el.classList.toggle('hidden',!running));
   dom.focusStatus.textContent=running?'专注中':'未开始';dom.focusStatus.classList.toggle('running',running);
   if(!running){dom.focusClock.textContent='00:00:00';dom.focusSubjectLabel.textContent='选择学科开始，或继续未完成任务';dom.focusLiveNote.value='';dom.immersionReviewCard.classList.add('hidden');dom.immersionContent.classList.remove('review-session');return;}
-  const elapsed=Math.max(0,(Number(state.focus.elapsedBefore)||0)+(Date.now()-state.focus.startedAt)/1000),shown=state.focus.type==='countdown'?Math.max(0,state.focus.durationSeconds-elapsed):elapsed;
+  const elapsed=Math.max(0,(Number(state.focus.elapsedBefore)||0)+(Date.now()-state.focus.startedAt)/1000),shown=state.focus.type==='countdown'?Math.max(0,state.focus.durationSeconds-elapsed):elapsed,task=taskById(state.focus.taskId),cumulative=(Number(task?.totalSeconds)||0)+Math.max(0,(Date.now()-state.focus.startedAt)/1000);
   dom.focusClock.textContent=clockLabel(shown);const fields=ensureFocusImmersionFields();
   dom.focusSubjectLabel.textContent=`${fields.eventName||state.focus.categoryName} · ${state.focus.taskType==='review'?'复习':'学习'} · ${state.focus.type==='countdown'?'倒计时':'累计计时'}`;
   if(document.activeElement!==dom.focusLiveNote)dom.focusLiveNote.value=fields.notes||'';syncImmersionInputs(fields);
-  dom.immersionClock.textContent=clockLabel(shown);dom.immersionSubject.textContent=state.focus.categoryName;dom.immersionTotal.textContent=`本任务累计专注 ${clockLabel(elapsed)}`;
+  dom.immersionClock.textContent=clockLabel(shown);dom.immersionSubject.textContent=state.focus.categoryName;dom.immersionTotal.textContent=`本任务累计专注 ${clockLabel(cumulative)}`;
   dom.immersionMode.textContent=`${state.focus.taskType==='review'?'复习':'学习'} · ${state.focus.type==='countdown'?'倒计时':'累计专注'}`;
   renderImmersionReviewContext();renderImmersionExtras();renderPictureInPicture(shown);
 }
 
-function syncImmersionInputs(fields=ensureFocusImmersionFields()){if(!fields)return;[[dom.immersionMaterialLocation,'materialLocation'],[dom.immersionEventName,'eventName'],[dom.immersionSummary,'summary'],[dom.immersionLiveNote,'notes'],[dom.immersionLeftover,'leftover'],[dom.immersionActionType,'actionType'],[dom.immersionMastery,'mastery']].forEach(([input,key])=>{if(document.activeElement!==input)input.value=fields[key]??'';});}
+function setImmersionAction(value,{update=true}={}){const action=normalizeActionType(value)||'new';dom.immersionActionType.value=action;[[dom.immersionActionNew,'new'],[dom.immersionActionApply,'apply'],[dom.immersionActionMemorize,'memorize']].forEach(([button,key])=>button.setAttribute('aria-checked',String(key===action)));if(update)updateFocusImmersionFields();}
+function syncImmersionInputs(fields=ensureFocusImmersionFields()){if(!fields)return;[[dom.immersionMaterialLocation,'materialLocation'],[dom.immersionProgress,'progress'],[dom.immersionEventName,'eventName'],[dom.immersionSummary,'summary'],[dom.immersionLiveNote,'notes'],[dom.immersionLeftover,'leftover'],[dom.immersionMastery,'mastery']].forEach(([input,key])=>{if(document.activeElement!==input)input.value=fields[key]??'';});setImmersionAction(fields.actionType,{update:false});}
 
 function updateFocusLiveNote(value){
   if(!state.focus)return;const fields=ensureFocusImmersionFields();fields.notes=value;state.focus.liveNotes=value;
@@ -1198,7 +1225,7 @@ function updateFocusLiveNote(value){
 }
 
 function updateFocusImmersionFields(){
-  if(!state.focus)return;const fields=ensureFocusImmersionFields(),actionType=dom.immersionActionType.value;Object.assign(fields,{eventName:dom.immersionEventName.value.trim(),materialLocation:dom.immersionMaterialLocation.value.trim(),summary:dom.immersionSummary.value.trim(),notes:dom.immersionLiveNote.value,leftover:dom.immersionLeftover.value.trim(),actionType,actionTypes:[actionType],mastery:dom.immersionMastery.value});
+  if(!state.focus)return;const fields=ensureFocusImmersionFields(),actionType=normalizeActionType(dom.immersionActionType.value)||'new';Object.assign(fields,{eventName:dom.immersionEventName.value.trim(),materialLocation:dom.immersionMaterialLocation.value.trim(),progress:dom.immersionProgress.value.trim(),summary:dom.immersionSummary.value.trim(),notes:dom.immersionLiveNote.value,leftover:dom.immersionLeftover.value.trim(),actionType,actionTypes:[actionType],mastery:dom.immersionMastery.value});
   state.focus.liveNotes=fields.notes;if(document.activeElement!==dom.focusLiveNote)dom.focusLiveNote.value=fields.notes;const task=taskById(state.focus.taskId);if(task)task.fields=clone(fields);saveBackup();saveActiveFocus();
 }
 
@@ -1206,7 +1233,7 @@ function renderImmersionReviewContext(){
   const review=state.reviews.find(item=>item.id===state.focus?.reviewId),plan=state.events.find(item=>item.id===state.focus?.planEventId),source=review?reviewSource(review):plan;
   if(!source){dom.immersionReviewCard.classList.add('hidden');dom.immersionContent.classList.remove('review-session');return;}
   dom.immersionReviewCard.classList.remove('hidden');dom.immersionContent.classList.add('review-session');
-  dom.immersionReviewCard.innerHTML=`<div class="immersion-review-top">${review?`第 ${review.reviewNumber} 次复习 · ${reviewIntervalLabel(review,source)}`:'学习计划'} · 暂停不会标记完成</div><h3>${escapeHtml(eventTitle(source))}</h3><div class="immersion-review-tags">${(source.actionTypes||[]).map(type=>`<span>${escapeHtml(ACTION_TYPE_LABELS[type]||type)}</span>`).join('')}<span>${escapeHtml(source.materialLocation||'未填写资料定位')}</span></div>`;
+  dom.immersionReviewCard.innerHTML=`<div class="immersion-review-top">${review?`第 ${review.reviewNumber} 次复习 · ${reviewIntervalLabel(review,source)}`:'学习计划'} · 暂停不会标记完成</div><h3>${escapeHtml(eventTitle(source))}</h3><div class="immersion-review-tags">${normalizeActionTypes(source.actionTypes).map(type=>`<span>${escapeHtml(ACTION_TYPE_LABELS[type])}</span>`).join('')}<span>${escapeHtml(source.materialLocation||'未填写资料定位')}</span></div>`;
 }
 
 function applyImmersionSettings(){const s=state.settings;dom.immersionContent.classList.toggle('swapped',Boolean(s.immersionSwapped));dom.immersionSwapBtn.setAttribute('aria-pressed',String(Boolean(s.immersionSwapped)));dom.immersionBackdrop.className=`immersion-backdrop theme-${s.immersionTheme}`;dom.immersionBackdrop.style.setProperty('--immersion-opacity',s.immersionOpacity);dom.immersionOverlay.style.setProperty('--immersion-opacity',s.immersionOpacity);dom.immersionBackdrop.style.backgroundImage=s.immersionTheme==='custom'&&s.immersionBackground?`url("${String(s.immersionBackground).replaceAll('\\','\\\\').replaceAll('"','\\"')}")`:'';dom.immersionCountdown.style.setProperty('--countdown-size',`${clamp(Number(s.countdownSize)||30,18,64)}px`);dom.immersionCountdown.classList.remove('position-top','position-bottom');if(s.countdownPosition==='top')dom.immersionCountdown.classList.add('position-top');if(s.countdownPosition==='bottom')dom.immersionCountdown.classList.add('position-bottom');renderImmersionExtras();}
@@ -1247,7 +1274,7 @@ function finishFocus(automatic){
 function saveFocusRecord(){
   const task=taskById(state.pendingFocus?.taskId);if(!task||task.status!=='paused')return;
   pushHistory();const start=dom.focusStartPoint.value.trim(),end=dom.focusEndPoint.value.trim();
-  Object.assign(task.fields,{eventName:dom.focusResultName.value.trim()||task.fields.eventName||task.categoryName+'任务',materialLocation:end?[start,end].filter(Boolean).join(' → '):start,summary:dom.focusResultSummary.value.trim(),notes:dom.focusDetailText.value.trim(),leftover:dom.focusResultLeftover.value.trim(),mastery:dom.focusResultMastery.value});
+  Object.assign(task.fields,{eventName:dom.focusResultName.value.trim()||task.fields.eventName||task.categoryName+'任务',materialLocation:start,progress:end,summary:dom.focusResultSummary.value.trim(),notes:dom.focusDetailText.value.trim(),leftover:dom.focusResultLeftover.value.trim(),mastery:dom.focusResultMastery.value});
   task.resultStartPoint=start;task.resultEndPoint=end;syncTaskRecords(task);
   if(dom.focusCompletionStatus.value==='completed')completeFocusTask(task);
   state.pendingFocus=null;saveBackup();closeModal('focusDetailModal');renderAll();
@@ -1257,11 +1284,11 @@ function discardFocusRecord(){dom.focusCompletionStatus.value='paused';saveFocus
 
 function snapshot(){return{currentDate:state.currentDate.toISOString(),settings:clone(state.settings),categories:clone(state.categories),events:clone(state.events),reviews:clone(state.reviews),focusTasks:clone(state.focusTasks),activeFocus:state.focus?clone(state.focus):null};}
 
-function normalizeReviewData(review){const number=Math.max(1,Number(review.reviewNumber)||1),stored=Number(review.intervalDays),preset=Number(state.settings.reviewIntervals[number-1]);return{...review,reviewNumber:number,intervalDays:Number.isFinite(stored)?stored:Number.isFinite(preset)?preset:number,reviewDate:normalizeDate(review.reviewDate)};}
-function normalizeEventData(event){return{...event,date:normalizeDate(event.date),eventName:eventTitle(event),textContent:event.textContent||'',notes:event.notes||''};}
+function normalizeReviewData(review){const number=Math.max(1,Number(review.reviewNumber)||1),stored=Number(review.intervalDays),preset=Number(state.settings.reviewIntervals[number-1]);return{...review,reviewNumber:number,intervalDays:Number.isFinite(stored)?stored:Number.isFinite(preset)?preset:number,reviewDate:normalizeDate(review.reviewDate),actionTypes:normalizeActionTypes(review.actionTypes)};}
+function normalizeEventData(event){return{...event,date:normalizeDate(event.date),eventName:eventTitle(event),textContent:event.textContent||'',notes:event.notes||'',progress:event.progress||'',actionTypes:normalizeActionTypes(event.actionTypes)};}
 
 function normalizeTaskData(task){
-  const fields={eventName:'',materialLocation:'',summary:'',notes:'',leftover:'',actionType:task.taskType==='review'?'review':'reading',mastery:'unknown',...(task.fields||{})};if(!Array.isArray(fields.actionTypes)||!fields.actionTypes.length)fields.actionTypes=[fields.actionType];return {...task,totalSeconds:Math.max(0,Number(task.totalSeconds)||0),segmentEventIds:Array.isArray(task.segmentEventIds)?task.segmentEventIds:[],fields};
+  const fields={eventName:'',materialLocation:'',progress:'',summary:'',notes:'',leftover:'',actionType:'new',mastery:'unknown',...(task.fields||{})},actionTypes=normalizeActionTypes(fields.actionTypes||fields.actionType);fields.actionType=actionTypes[0];fields.actionTypes=actionTypes;return {...task,totalSeconds:Math.max(0,Number(task.totalSeconds)||0),segmentEventIds:Array.isArray(task.segmentEventIds)?task.segmentEventIds:[],fields};
 }
 function restore(data){
   clearInterval(state.focusTicker);state.focusTicker=null;state.pendingFocus=null;
@@ -1293,13 +1320,15 @@ function loadBackup(){
 function exportData(){const data={version:DATA_VERSION,exportedAt:new Date().toISOString(),...snapshot()};downloadBlob(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),`学习日志_${dateKey(new Date())}.json`);}
 
 function importData(){const file=dom.importInput.files?.[0];if(!file)return;const reader=new FileReader();reader.onload=()=>{try{const data=JSON.parse(String(reader.result));if(!window.confirm('导入会覆盖当前数据，是否继续？'))return;pushHistory();restore({currentDate:data.currentDate||new Date().toISOString(),settings:data.settings||defaultSettings,categories:data.categories?.length?data.categories:defaultCategories,events:data.events||[],reviews:data.reviews||[],focusTasks:data.focusTasks||[],activeFocus:data.activeFocus||null});}catch(_){window.alert('导入失败：文件格式无效。');}};reader.readAsText(file);dom.importInput.value='';}
-function exportImage(){
+function shiftReportDate(amount){refreshReviewDay();state.currentDate=addDays(state.currentDate,amount);state.selectedEventId=null;saveBackup();renderAll();exportImage(false);}
+function exportImage(openPreview=true){
+  if(typeof openPreview!=='boolean')openPreview=true;
   const width=1400,header=360,target=createLayout(width,54,header),output=document.createElement('canvas'),scale=2;output.width=width*scale;output.height=(target.height+24)*scale;const c=output.getContext('2d');c.setTransform(scale,0,0,scale,0,0);c.imageSmoothingEnabled=true;c.imageSmoothingQuality='high';const records=currentEvents().filter((event)=>event.halfZone==='record'),totalSeconds=records.reduce((sum,event)=>sum+focusSeconds(event),0),pending=state.reviews.filter((review)=>review.reviewDate===currentDateKey()&&!review.completed&&!review.abandoned).length;
-  c.fillStyle='#fff';c.fillRect(0,0,output.width,output.height);c.fillStyle='#20231f';c.font='800 34px "Segoe UI","Microsoft YaHei"';c.fillText('今日学习日报',42,54);c.fillStyle='#444';c.font='15px "Segoe UI"';c.fillText(`${state.currentDate.getFullYear()}年${dateLabel(state.currentDate)}`,43,82);
+  c.fillStyle='#fff';c.fillRect(0,0,output.width,output.height);c.fillStyle='#20231f';c.font='800 34px "Segoe UI","Microsoft YaHei"';c.fillText('学习日报',42,54);c.fillStyle='#444';c.font='15px "Segoe UI"';c.fillText(`${state.currentDate.getFullYear()}年${dateLabel(state.currentDate)}`,43,82);
   const metrics=[['学习总时长',durationLabel(totalSeconds)],['记录事件',`${records.length} 项`],['待复习',`${pending} 项`]];metrics.forEach(([label,value],index)=>{const x=42+index*225;c.fillStyle='#f5f5f0';roundRect(c,x,112,205,96,16);c.fill();c.fillStyle='#444';c.font='12px "Segoe UI"';c.fillText(label,x+18,141);c.fillStyle='#20231f';c.font='800 26px "Segoe UI"';c.fillText(value,x+18,181);});
   const distribution=new Map();records.forEach((event)=>{const subject=subjectById(event.categoryId),key=subject?.id||'other',item=distribution.get(key)||{name:subject?.name||'未分类',color:subject?.color||event.color||'#88928b',seconds:0};item.seconds+=focusSeconds(event);distribution.set(key,item);});const items=[...distribution.values()],sum=items.reduce((value,item)=>value+item.seconds,0),cx=930,cy=161,radius=82;c.lineWidth=28;let angle=-Math.PI/2;if(sum){items.forEach((item)=>{const next=angle+item.seconds/sum*Math.PI*2;c.strokeStyle=item.color;c.beginPath();c.arc(cx,cy,radius,angle,next);c.stroke();angle=next;});}else{c.strokeStyle='#e5e7e2';c.beginPath();c.arc(cx,cy,radius,0,Math.PI*2);c.stroke();}c.fillStyle='#20231f';c.textAlign='center';c.font='800 21px "Segoe UI"';c.fillText(durationLabel(totalSeconds),cx,158);c.fillStyle='#444';c.font='11px "Segoe UI"';c.fillText('记录区总时长',cx,178);c.textAlign='left';items.slice(0,6).forEach((item,index)=>{const x=1060,y=125+index*27;c.fillStyle=item.color;c.beginPath();c.arc(x,y-4,5,0,Math.PI*2);c.fill();c.fillStyle='#3d443f';c.font='12px "Segoe UI"';c.fillText(`${item.name}  ${sum?Math.round(item.seconds/sum*100):0}%`,x+13,y);});
   c.fillStyle='#20231f';c.font='800 17px "Segoe UI"';c.fillText('学习时间轴',42,287);c.fillStyle='#444';c.font='11px "Segoe UI"';c.fillText('箭头颜色代表学科；虚线代表复习任务',42,309);c.textAlign='center';c.font='800 12px "Segoe UI"';c.fillText('计划区',target.planWidth/2,348);c.fillText('记录区',target.planWidth+(target.width-target.planWidth)/2,348);drawTimeline(c,target,{exportMode:true});
-  const url=output.toDataURL('image/png');dom.dailyReportPreview.src=url;dom.dailyReportDownload.href=url;dom.dailyReportDownload.download=`学习日报_${currentDateKey()}.png`;closeToolbarMenu();openModal('reportModal');
+  const url=output.toDataURL('image/png');dom.dailyReportPreview.src=url;dom.dailyReportDownload.href=url;dom.dailyReportDownload.download=`学习日报_${currentDateKey()}.png`;dom.reportDateLabel.textContent=`${state.currentDate.getFullYear()}-${pad(state.currentDate.getMonth()+1)}-${pad(state.currentDate.getDate())}`;if(openPreview){closeToolbarMenu();openModal('reportModal');}
 }
 function downloadBlob(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 
@@ -1320,4 +1349,4 @@ function renderAll(){renderDate();renderTimeline();renderReviews();renderFocusSu
 updateFocusDurationUI();
 checkPlanReminders();
 state.planReminderTicker=setInterval(checkPlanReminders,15000);
-if('serviceWorker'in navigator&&/^https?:$/.test(location.protocol))navigator.serviceWorker.register('./sw.js?v=30').catch(()=>{});
+if('serviceWorker'in navigator&&/^https?:$/.test(location.protocol))navigator.serviceWorker.register('./sw.js?v=31').catch(()=>{});

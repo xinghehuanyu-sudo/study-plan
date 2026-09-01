@@ -9,7 +9,7 @@
   <title>学习计划时间轴</title>
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="styles.css?v=30" />
+  <link rel="stylesheet" href="styles.css?v=31" />
 </head>
 <body>
   <div class="portrait-orientation-gate" role="status" aria-live="polite">
@@ -56,6 +56,7 @@
     <div id="eventMergeBar" class="event-merge-bar hidden" role="region" aria-label="合并学习事件">
       <strong id="eventMergeCount">已选择 0 条</strong>
       <input id="eventMergeName" type="text" maxlength="100" placeholder="统一事件名称（留空沿用第一条）" aria-label="合并后的统一事件名称" />
+      <label class="merge-strategy-label">复习重建<select id="eventMergeStrategy"><option value="least-progress" selected>按最少复习次数接续</option><option value="restart">从第一天重新生成</option></select></label>
       <span>点击时间轴事件进行多选，至少选择两条同一学科的学习记录</span>
       <button id="confirmEventMergeBtn" class="tool-btn primary" disabled>合并并重建复习</button>
       <button id="cancelEventMergeBtn" class="tool-btn">取消</button>
@@ -124,10 +125,13 @@
         <details class="span-2 event-section" open><summary>02 · 学科与学习内容</summary><div class="event-section-grid">
           <label class="span-2">学科路径<input id="eventSubjectPath" list="eventSubjectOptions" type="text" autocomplete="off" placeholder="输入或选择：一级 / 二级 / 三级" /><datalist id="eventSubjectOptions"></datalist></label>
           <select id="eventCategory" class="hidden" aria-hidden="true"></select><select id="eventSubcategory" class="hidden" aria-hidden="true"><option value="">不继续选择</option></select><select id="eventTopic" class="hidden" aria-hidden="true"><option value="">不继续选择</option></select>
-          <fieldset class="span-2 action-type-field"><legend>学习动作（可多选）</legend><div class="action-type-options">
-            <label><input class="event-action-type" type="checkbox" value="video" /> 视频</label><label><input class="event-action-type" type="checkbox" value="reading" /> 阅读</label><label><input class="event-action-type" type="checkbox" value="practice" /> 习题</label><label><input class="event-action-type" type="checkbox" value="memorize" /> 背诵</label><label><input class="event-action-type" type="checkbox" value="review" /> 复习</label>
+          <fieldset class="span-2 action-type-field"><legend>学习动作（单选）</legend><div class="action-type-options action-type-radio">
+            <label><input class="event-action-type" type="radio" name="eventActionType" value="new" checked /><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5c2.7-.8 5.3-.4 8 1.5v12c-2.7-1.9-5.3-2.3-8-1.5zM20 8.5c-2.7-.8-5.3-.4-8 1.5M17.5 2.5v3M16 4h3M21 4.5v2M20 5.5h2" /></svg><span>新知</span></label>
+            <label><input class="event-action-type" type="radio" name="eventActionType" value="apply" /><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11v15H5zM8 8h5M8 11h4M14.5 17.5l4-4M17 18l2 2 3-4" /></svg><span>运用</span></label>
+            <label><input class="event-action-type" type="radio" name="eventActionType" value="memorize" /><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5a3 3 0 0 0-5 2.2A3 3 0 0 0 4 13a3 3 0 0 0 5 2M15 5a3 3 0 0 1 5 2.2 3 3 0 0 1 0 5.8 3 3 0 0 1-5 2M12 4v13M7 15h10v6H7z" /></svg><span>记诵</span></label>
           </div></fieldset>
           <label>资料定位<input id="eventMaterialLocation" type="text" maxlength="100" placeholder="例如：讲义 P69-P83 / 第 4 章" /></label>
+          <label>学到哪<input id="eventProgress" type="text" maxlength="100" placeholder="例如：第 4.3 节 / 习题 12" /></label>
           <label>掌握程度<select id="eventMastery"><option value="unknown">尚未判断</option><option value="weak">薄弱</option><option value="partial">部分掌握</option><option value="mastered">已掌握</option></select></label>
           <label>学习摘要<input id="eventTextContent" type="text" maxlength="160" placeholder="一句话记录本次完成了什么" /></label>
         </div></details>
@@ -208,13 +212,20 @@
     <div class="modal-card calendar-card">
       <div class="modal-header"><div><span class="eyebrow">CALENDAR</span><h3>月度学习视图</h3></div><button class="icon-btn" data-close="calendarModal" aria-label="关闭">×</button></div>
       <div class="calendar-toolbar"><button id="calendarPrevBtn" class="nav-arrow">←</button><strong id="calendarTitle"></strong><button id="calendarNextBtn" class="nav-arrow">→</button></div>
+      <div class="calendar-heat-legend" aria-label="每日学习总时长热力分级：1小时至10小时以上，共10级；0小时不显示">
+        <span>每日学习总时长</span><span>1h</span>
+        <span class="calendar-heat-scale" aria-hidden="true">
+          <i style="--heat-color:#e0efe1"></i><i style="--heat-color:#c9e4cd"></i><i style="--heat-color:#afd7b8"></i><i style="--heat-color:#93cba1"></i><i style="--heat-color:#75bc89"></i><i style="--heat-color:#58aa72"></i><i style="--heat-color:#40965d"></i><i style="--heat-color:#2e814c"></i><i style="--heat-color:#206c3d"></i><i style="--heat-color:#125730"></i>
+        </span>
+        <span>10h+</span><small>0h不显示</small>
+      </div>
       <div id="monthCalendar" class="month-calendar"></div>
     </div>
   </div>
 
   <div id="statsModal" class="modal hidden" aria-hidden="true">
     <div class="modal-card module-card">
-      <div class="modal-header"><div><span class="eyebrow">INSIGHTS</span><h3>专注统计</h3></div><button class="icon-btn" data-close="statsModal" aria-label="关闭">×</button></div>
+      <div class="modal-header"><div><span class="eyebrow">INSIGHTS</span><h3>专注统计</h3></div><div class="modal-header-actions"><div class="period-switcher" aria-label="切换统计周期"><button id="statsPrevPeriod" class="icon-btn" type="button" aria-label="上一统计周期">‹</button><strong id="statsPeriodLabel">本日</strong><button id="statsNextPeriod" class="icon-btn" type="button" aria-label="下一统计周期">›</button></div><button class="icon-btn" data-close="statsModal" aria-label="关闭">×</button></div></div>
       <div class="module-toolbar stats-toolbar">
         <div id="statsSubjectFilters" class="subject-filter-list"></div>
         <div class="stats-controls">
@@ -225,17 +236,17 @@
       </div>
       <div class="modal-body stats-grid">
         <section class="stat-card" data-stat-section="summary"><button class="eye-btn" data-toggle-stat="summary" title="显示或隐藏">◉</button><h4>范围内专注</h4><div class="metric-row"><div><strong id="statTotalCount">0</strong><span>次数</span></div><div><strong id="statTotalTime">0m</strong><span>总时长</span></div><div><strong id="statDailyAverage">0m</strong><span>日均</span></div></div></section>
-        <section class="stat-card" data-stat-section="today"><button class="eye-btn" data-toggle-stat="today">◉</button><h4>今日专注</h4><div class="metric-row"><div><strong id="statTodayCount">0</strong><span>次数</span></div><div><strong id="statTodayTime">0m</strong><span>时长</span></div></div><div id="statTodaySplit" class="stat-today-split"></div></section>
+        <section class="stat-card" data-stat-section="today"><button class="eye-btn" data-toggle-stat="today">◉</button><h4 id="statDayTitle">当日专注</h4><div class="metric-row"><div><strong id="statTodayCount">0</strong><span>次数</span></div><div><strong id="statTodayTime">0m</strong><span>时长</span></div></div><div id="statTodaySplit" class="stat-today-split"></div></section>
         <section class="stat-card chart-card" data-stat-section="distribution"><button class="eye-btn" data-toggle-stat="distribution">◉</button><h4>学科时长分布</h4><p class="chart-legend">实色：学习　斜线：复习 · 悬停或聚焦查看时长</p><canvas id="distributionChart" width="520" height="220"></canvas><div id="distributionDetails" class="distribution-details"></div></section>
-        <section class="stat-card chart-card" data-stat-section="monthly"><button class="eye-btn" data-toggle-stat="monthly">◉</button><h4>本月每日专注</h4><div class="chart-scroll"><canvas id="monthlyChart" width="760" height="230"></canvas></div></section>
-        <section class="stat-card chart-card" data-stat-section="yearly"><button class="eye-btn" data-toggle-stat="yearly">◉</button><h4>本年每月专注</h4><div class="chart-scroll"><canvas id="yearlyChart" width="760" height="230"></canvas></div></section>
+        <section class="stat-card chart-card" data-stat-section="monthly"><button class="eye-btn" data-toggle-stat="monthly">◉</button><h4 id="statMonthTitle">本月每日专注</h4><div class="chart-scroll"><canvas id="monthlyChart" width="760" height="230"></canvas></div></section>
+        <section class="stat-card chart-card" data-stat-section="yearly"><button class="eye-btn" data-toggle-stat="yearly">◉</button><h4 id="statYearTitle">本年每月专注</h4><div class="chart-scroll"><canvas id="yearlyChart" width="760" height="230"></canvas></div></section>
       </div>
     </div>
   </div>
 
   <div id="reportModal" class="modal hidden" aria-hidden="true">
     <div class="modal-card module-card">
-      <div class="modal-header"><h3>学习日报预览</h3><button class="icon-btn" data-close="reportModal" aria-label="关闭">×</button></div>
+      <div class="modal-header"><h3>学习日报预览</h3><div class="modal-header-actions"><div class="period-switcher" aria-label="切换日报日期"><button id="reportPrevDay" class="icon-btn" type="button" aria-label="前一天">‹</button><strong id="reportDateLabel">今日</strong><button id="reportNextDay" class="icon-btn" type="button" aria-label="后一天">›</button></div><button class="icon-btn" data-close="reportModal" aria-label="关闭">×</button></div></div>
       <div class="modal-body"><p class="settings-note">核对图片后点击保存；若浏览器未自动下载，也可右键或长按图片保存。</p><img id="dailyReportPreview" class="daily-report-preview" alt="当天学习日报，包含总时长、学科分布及时间轴" /></div>
       <div class="modal-footer"><button class="tool-btn" data-close="reportModal">关闭预览</button><a id="dailyReportDownload" class="tool-btn primary" download>保存 PNG</a></div>
     </div>
@@ -331,11 +342,12 @@
         <div class="immersion-input-heading"><strong>沉浸记录</strong><span>按 Tab 依次切换字段</span></div>
         <div class="immersion-input-grid">
           <label>资料定位<input id="immersionMaterialLocation" type="text" maxlength="100" placeholder="讲义 P69-P83" /></label>
+          <label>学到哪<input id="immersionProgress" type="text" maxlength="100" placeholder="第 4.3 节 / 习题 12" /></label>
           <label>事件名称<input id="immersionEventName" type="text" maxlength="100" placeholder="本次学习任务或章节名称" /></label>
           <label class="wide">学习摘要<input id="immersionSummary" type="text" maxlength="160" placeholder="一句话概括完成内容" /></label>
           <label class="wide">学习笔记<textarea id="immersionLiveNote" rows="2" maxlength="1200" placeholder="推导、易错点与自己的理解"></textarea></label>
           <label class="wide">遗留内容<input id="immersionLeftover" type="text" maxlength="240" placeholder="尚未解决的问题，可留空" /></label>
-          <label>学习动作<select id="immersionActionType"><option value="video" selected>视频</option><option value="practice">习题</option><option value="memorize">背诵</option><option value="reading">阅读</option><option value="review">复习</option></select></label>
+          <div class="wide immersion-action-field"><span>学习动作</span><div id="immersionActionPicker" class="immersion-action-picker" role="radiogroup" aria-label="学习动作"><button id="immersionActionNew" type="button" data-action="new" role="radio" aria-checked="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5c2.7-.8 5.3-.4 8 1.5v12c-2.7-1.9-5.3-2.3-8-1.5zM20 8.5c-2.7-.8-5.3-.4-8 1.5M17.5 2.5v3M16 4h3M21 4.5v2M20 5.5h2" /></svg><span>新知</span></button><button id="immersionActionApply" type="button" data-action="apply" role="radio" aria-checked="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11v15H5zM8 8h5M8 11h4M14.5 17.5l4-4M17 18l2 2 3-4" /></svg><span>运用</span></button><button id="immersionActionMemorize" type="button" data-action="memorize" role="radio" aria-checked="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5a3 3 0 0 0-5 2.2A3 3 0 0 0 4 13a3 3 0 0 0 5 2M15 5a3 3 0 0 1 5 2.2 3 3 0 0 1 0 5.8 3 3 0 0 1-5 2M12 4v13M7 15h10v6H7z" /></svg><span>记诵</span></button></div><select id="immersionActionType" class="hidden" aria-hidden="true" tabindex="-1"><option value="new" selected>新知</option><option value="apply">运用</option><option value="memorize">记诵</option></select></div>
           <label>掌握程度<select id="immersionMastery"><option value="unknown">尚未判断</option><option value="weak">薄弱</option><option value="partial">部分掌握</option><option value="mastered">已掌握</option></select></label>
         </div>
       </section>
@@ -356,6 +368,6 @@
   </div>
   <div id="contextMenu" class="context-menu hidden"></div>
   <input id="importInput" type="file" accept="application/json" hidden />
-  <script src="app.js?v=30"></script>
+  <script src="app.js?v=31"></script>
 </body>
 </html>
