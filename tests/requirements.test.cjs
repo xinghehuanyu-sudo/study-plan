@@ -582,6 +582,15 @@ test('051 uses one new/apply/memorize action, defaults to new and migrates legac
   assert.deepEqual(h.json("normalizeActionTypes(['video','practice','reading','review'])"),['new']);
 });
 
+test('051 removed legacy actions stay unlabelled in historical records', () => {
+  const h=harness();
+  h.run("state.events=[normalizeEventData({id:'legacy',date:currentDateKey(),halfZone:'record',taskType:'learn',categoryId:state.categories[0].id,categoryName:'数学',subjectPath:[state.categories[0].id],eventName:'旧记录',startSlot:480,endSlot:500,actionTypes:['reading','review']})]");
+  assert.deepEqual(h.json('state.events[0].actionTypes'),[]);
+  assert.deepEqual(h.json('reviewSnapshot(state.events[0]).actionTypes'),[]);
+  h.run("openEventDetail('legacy')");
+  assert.doesNotMatch(h.nodes.get('eventDetailBody').innerHTML,/新知|运用|记诵/);
+});
+
 test('052 PiP requests compact size, renders exactly three rows and its pause saves the task', async () => {
   const h=harness();h.run(`var pipNodes=new Map(['pipClock','pipSubject','pipBack','pipPause','pipStop'].map(id=>[id,{}]));
     var pip={closed:false,document:{head:{},body:{},getElementById:id=>pipNodes.get(id)},close(){this.closed=true;},focus(){},addEventListener(){}};
@@ -787,12 +796,27 @@ test('068 selecting one task segment selects its siblings and least-progress mer
   const m=harness();m.run("state.events=[{id:'older',date:'2026-08-20',halfZone:'record',taskType:'learn',categoryId:state.categories[0].id,categoryName:'数学',subjectPath:[state.categories[0].id],eventName:'章节',startSlot:480,endSlot:500},{id:'newer',date:'2026-08-22',halfZone:'record',taskType:'learn',categoryId:state.categories[0].id,categoryName:'数学',subjectPath:[state.categories[0].id],eventName:'章节',startSlot:500,endSlot:520}];state.reviews=[{id:'o1',sourceEventId:'older',reviewNumber:1,reviewDate:'2026-08-21',completed:true,completedAt:'2026-08-21T10:00:00'},{id:'o2',sourceEventId:'older',reviewNumber:2,reviewDate:'2026-08-23',completed:true,completedAt:'2026-08-23T10:00:00'},{id:'n1',sourceEventId:'newer',reviewNumber:1,reviewDate:'2026-08-23',completed:true,completedAt:'2026-08-23T09:00:00'}];state.mergeSelection=new Set(['older','newer']);mergeSelectedEvents('合并章节','least-progress')");assert.deepEqual(m.json('state.reviews.map(r=>r.reviewNumber)'),[2,3,4,5]);assert.equal(m.run('state.reviews.every(r=>r.regeneratedFromReviewCount===1)'),true);
 });
 
+test('068 merge rebuild strategies use their specified learning baseline date', () => {
+  const seed="state.events=[{id:'older',date:'2026-08-20',halfZone:'record',taskType:'learn',categoryId:state.categories[0].id,categoryName:'数学',subjectPath:[state.categories[0].id],eventName:'章节',startSlot:480,endSlot:500},{id:'newer',date:'2026-08-22',halfZone:'record',taskType:'learn',categoryId:state.categories[0].id,categoryName:'数学',subjectPath:[state.categories[0].id],eventName:'章节',startSlot:500,endSlot:520}]";
+  const restart=harness();restart.run(`${seed};state.mergeSelection=new Set(['older','newer']);mergeSelectedEvents('合并章节','restart')`);
+  assert.equal(restart.run('state.reviews[0].reviewDate'),'2026-08-21');
+  const least=harness();least.run(`${seed};state.reviews=[{id:'done',sourceEventId:'newer',reviewNumber:1,reviewDate:'2026-08-23',completed:true,completedAt:'2026-08-23T09:00:00'}];state.mergeSelection=new Set(['older','newer']);mergeSelectedEvents('合并章节','least-progress')`);
+  assert.equal(least.run('state.reviews[0].reviewDate'),'2026-08-21');
+});
+
 test('069 learning progress is stored separately and shown on paused tasks and timeline details', () => {
   const h=harness();h.run('startFocus(state.categories[0].id)');h.nodes.get('immersionMaterialLocation').value='讲义 P69';h.nodes.get('immersionProgress').value='第 4.3 节';h.nodes.get('immersionProgress').emit('input');h.advance(1000);h.run('pauseFocus()');assert.equal(h.run('state.focusTasks[0].fields.materialLocation'),'讲义 P69');assert.equal(h.run('state.focusTasks[0].fields.progress'),'第 4.3 节');assert.match(h.nodes.get('unfinishedTaskList').innerHTML,/学习进度：第 4\.3 节/);h.run('openEventDetail(state.events[0].id)');assert.match(h.nodes.get('eventDetailBody').innerHTML,/学习进度[\s\S]*第 4\.3 节/);
 });
 
 test('070 continuing a count-up task starts the visible timer at zero while preserving cumulative duration', () => {
   const h=harness();h.run('startFocus(state.categories[0].id)');h.advance(10000);h.run('pauseFocus()');h.advance(600000);h.run('resumeFocusTask(state.focusTasks[0].id);renderFocus()');assert.equal(h.nodes.get('focusClock').textContent,'00:00:00');assert.equal(h.run('state.focus.elapsedBefore'),0);h.advance(5000);h.run('renderFocus()');assert.equal(h.nodes.get('focusClock').textContent,'00:00:05');h.run('pauseFocus()');assert.equal(h.run('state.focusTasks[0].totalSeconds'),15);
+});
+
+test('immediate pause does not create a zero-duration timeline event', () => {
+  const h=harness();h.run('startFocus(state.categories[0].id);pauseFocus()');
+  assert.equal(h.run('state.events.length'),0);assert.equal(h.run('state.focusTasks[0].status'),'paused');assert.equal(h.run('state.focusTasks[0].totalSeconds'),0);
+  h.run('resumeFocusTask(state.focusTasks[0].id)');h.advance(1000);h.run('pauseFocus()');
+  assert.equal(h.run('state.events.length'),1);assert.equal(h.run('state.events[0].focusSeconds'),1);
 });
 
 test('recheck: Escape, restore and render clear stale merge selections', () => {

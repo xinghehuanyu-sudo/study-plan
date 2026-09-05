@@ -351,7 +351,7 @@ function eventLabelPlacement(event,targetLayout) {
 function layoutEventLabel(context,event,targetLayout) {
   const placement=eventLabelPlacement(event,targetLayout);if(!placement)return null;
   const subject=subjectById(event.categoryId),fontSize=clamp(event.textSize||subject?.textSize||state.settings.defaultTextSize,10,24),smallSize=Math.max(9,fontSize-2),lineHeight=fontSize+5;
-  const prefix=[event.taskStatus==='paused'?'Ⅱ':event.halfZone==='plan'?(event.planCompletedAt?'✓':''): '',event.important?'★':'',(event.categoryName||'').split('/')[1]||'',...normalizeActionTypes(event.actionTypes).map(type=>ACTION_TYPE_ICONS[type]).filter(Boolean)].filter(Boolean).join(' ');
+  const prefix=[event.taskStatus==='paused'?'Ⅱ':event.halfZone==='plan'?(event.planCompletedAt?'✓':''): '',event.important?'★':'',(event.categoryName||'').split('/')[1]||'',...normalizeActionTypes(event.actionTypes,false).map(type=>ACTION_TYPE_ICONS[type]).filter(Boolean)].filter(Boolean).join(' ');
   const runs=[{text:prefix?prefix+' ':'',font:`600 ${smallSize}px "Segoe UI","Microsoft YaHei"`,color:'#607067'},{text:eventTitle(event),font:`${(event.italic??subject?.italic)?'italic ':''}${(event.bold??subject?.bold)?700:400} ${fontSize}px "Segoe UI","Microsoft YaHei"`,color:event.textColor||'#20231f'},{text:event.materialLocation?' '+event.materialLocation:'',font:`400 ${smallSize}px "Segoe UI","Microsoft YaHei"`,color:'#526259'}];
   const glyphs=runs.flatMap(run=>Array.from(run.text).map(char=>({...run,text:char}))),parts=[];let x=0,truncated=false;
   context.save();
@@ -469,9 +469,10 @@ function selectMergeBaseline(selected){
   const candidates=[],seen=new Set();selected.forEach((event,order)=>{const sourceId=mergeReviewSourceId(event);if(seen.has(sourceId))return;seen.add(sourceId);const reviews=state.reviews.filter(review=>review.sourceEventId===sourceId),completed=reviews.filter(review=>review.completed&&!review.abandoned),related=relatedMergeEvents(event);candidates.push({sourceId,completedCount:completed.length,lastCompletedDate:completed.map(review=>review.completedAt||review.reviewDate).sort().at(-1)||null,taskDate:related.map(item=>item.completedDate||item.date).sort().at(-1)||event.date,order});});
   return candidates.sort((a,b)=>a.completedCount-b.completedCount||b.taskDate.localeCompare(a.taskDate)||a.order-b.order)[0]||{completedCount:0,lastCompletedDate:null};
 }
-function rebuildMergedReviews(task,source,baseline,strategy){
+function rebuildMergedReviews(task,source,baseline,strategy,firstLearningDate){
   if(!source||!task.reviewSourceEventId)return;removeReviewsForSource(source.id,'events-merged-regenerated');
-  if(strategy==='restart'||!baseline.completedCount){generateReviews(source);return;}
+  if(strategy==='restart'){generateReviews(source,firstLearningDate||source.date);return;}
+  if(!baseline.completedCount){generateReviews(source,baseline.taskDate||firstLearningDate||source.date);return;}
   const completedCount=Math.min(baseline.completedCount,state.settings.reviewIntervals.length),lastIndex=Math.max(0,completedCount-1),base=parseDate(normalizeDate(baseline.lastCompletedDate||source.completedDate||source.date));
   state.settings.reviewIntervals.forEach((offset,index)=>{if(index<completedCount)return;const delta=Math.max(1,offset-state.settings.reviewIntervals[lastIndex]);state.reviews.push({id:uid('review'),sourceEventId:source.id,reviewDate:dateKey(addDays(base,delta)),reviewNumber:index+1,intervalDays:offset,...reviewSnapshot(source),completed:false,abandoned:false,regeneratedFromReviewCount:completedCount});});
 }
@@ -491,7 +492,7 @@ function mergeSelectedEvents(name='',strategy=dom.eventMergeStrategy?.value||'le
   const task={id:uid('task'),status:'paused',taskType:'learn',categoryId:first.categoryId,categoryName:first.categoryName,subjectPath:[...(first.subjectPath||[first.categoryId])],color:first.color||subject?.color||state.settings.defaultRecordColor,type:'countup',durationSeconds:0,sourceEventId:null,reviewId:null,planEventId:null,leftoverEventId:null,suppressReviews:false,createdAt:new Date(Math.min(...selected.map(event=>eventEndTimestamp(event)))).toISOString(),totalSeconds:selected.reduce((sum,event)=>sum+focusSeconds(event),0),segmentEventIds:selected.map(event=>event.id),fields,mergedSourceEventIds:selected.map(event=>event.id)};
   state.focusTasks.push(task);selected.forEach(event=>{event.focusTaskId=task.id;delete event.sourceEventId;delete event.sourceReviewId;delete event.sourcePlanEventId;});syncTaskRecords(task);
   const completedAt=Math.max(...selected.map(event=>eventEndTimestamp(event)));completeFocusTask(task,completedAt);
-  if(task.reviewSourceEventId){const generatedSourceId=task.reviewSourceEventId;if(generatedSourceId!==first.id)removeReviewsForSource(generatedSourceId,'events-merged-regenerated');task.reviewSourceEventId=first.id;rebuildMergedReviews(task,first,baseline,strategy);}
+  if(task.reviewSourceEventId){const generatedSourceId=task.reviewSourceEventId;if(generatedSourceId!==first.id)removeReviewsForSource(generatedSourceId,'events-merged-regenerated');task.reviewSourceEventId=first.id;rebuildMergedReviews(task,first,baseline,strategy,first.date);}
   validateConflicts();state.selectedDetailEventId=first.id;state.mergeMode=false;state.mergeSelection.clear();dom.eventMergeName.value='';saveBackup();renderAll();renderMergeBar();openEventDetail(first.id);return true;
 }
 function submitEventMerge(){mergeSelectedEvents(dom.eventMergeName.value,dom.eventMergeStrategy.value);}
@@ -566,7 +567,7 @@ function openEventModal(event=null,preset=null) {
   dom.eventNotes.value=event?.notes||'';
   dom.eventMaterialLocation.value=event?.materialLocation||'';dom.eventProgress.value=event?.progress||'';dom.eventMastery.value=event?.mastery||'unknown';
   dom.eventLeftover.value=event?.leftover||'';dom.eventImportant.checked=Boolean(event?.important);
-  const selectedAction=normalizeActionTypes(event?.actionTypes)[0];document.querySelectorAll('.event-action-type').forEach((input)=>{input.checked=input.value===selectedAction;});
+  const selectedAction=event?normalizeActionTypes(event.actionTypes,false)[0]:'new';document.querySelectorAll('.event-action-type').forEach((input)=>{input.checked=input.value===selectedAction;});
   const path=event?.subjectPath||[];syncCategoryOptions(event?.categoryId||path[0]);if(path[1])syncSubcategoryOptions(path[1]);if(path[2])syncTopicOptions(path[2]);syncSubjectPicker();
   const subject=subjectById(dom.eventCategory.value);dom.eventColor.value=event?.color||subject?.color||state.settings.defaultPlanColor;dom.eventOpacity.value=event?.opacity??subject?.opacity??.86;
   dom.eventTextSize.value=event?.textSize||subject?.textSize||state.settings.defaultTextSize;dom.eventTextColor.value=event?.textColor||state.settings.defaultTextColor;dom.eventTextOpacity.value=event?.textOpacity??subject?.textOpacity??.92;
@@ -574,7 +575,7 @@ function openEventModal(event=null,preset=null) {
   state.editingEventTime=event?{start:{...start,slot:startSlot},end:{...end,slot:endSlot}}:null;
   dom.eventStartHour.value=start.hour;dom.eventStartMinute.value=start.minute;dom.eventStartSecond.value=start.second;dom.eventEndHour.value=end.hour;dom.eventEndMinute.value=end.minute;dom.eventEndSecond.value=end.second;updateTimeSummary();openModal('eventModal');setTimeout(()=>dom.eventName.focus(),0);
 }
-function selectedActionTypes(){return normalizeActionTypes([...document.querySelectorAll('.event-action-type:checked')].map((input)=>input.value));}
+function selectedActionTypes(defaultToNew=true){return normalizeActionTypes([...document.querySelectorAll('.event-action-type:checked')].map((input)=>input.value),defaultToNew);}
 
 
 
@@ -593,7 +594,7 @@ function saveEvent() {
   if(timeChanged&&!isRangeVisible(range.startSlot,range.endSlot)){window.alert('事件不能跨越隐藏时段。');return;}if(!applySubjectPicker()){dom.eventSubjectPath.reportValidity();return;}
   const nodes=selectedSubjectNodes(),root=nodes[0],next={...(previous||{}),id:state.editingEventId||uid('event'),date:previous?.date||currentDateKey(),halfZone:task?previous.halfZone:dom.eventHalfZone.value,taskType:task?task.taskType:dom.eventTaskType.value,
     categoryId:root?.id||null,categoryName:nodes.map((n)=>n.name).join('/'),subjectPath:nodes.map((n)=>n.id),startSlot:range.startSlot,endSlot:range.endSlot,color:dom.eventColor.value,
-    opacity:Number(dom.eventOpacity.value),eventName:dom.eventName.value.trim()||'学习事件',actionTypes:selectedActionTypes().slice(0,1),materialLocation:dom.eventMaterialLocation.value.trim(),progress:dom.eventProgress.value.trim(),mastery:dom.eventMastery.value,
+    opacity:Number(dom.eventOpacity.value),eventName:dom.eventName.value.trim()||'学习事件',actionTypes:selectedActionTypes(!previous).slice(0,1),materialLocation:dom.eventMaterialLocation.value.trim(),progress:dom.eventProgress.value.trim(),mastery:dom.eventMastery.value,
     textContent:dom.eventTextContent.value.trim(),notes:dom.eventNotes.value.trim(),leftover:dom.eventLeftover.value.trim(),important:dom.eventImportant.checked,textSize:clamp(Number(dom.eventTextSize.value)||13,10,24),textColor:dom.eventTextColor.value,textOpacity:clamp(Number(dom.eventTextOpacity.value)||.92,.1,1),conflict:false};
   if(previous?.leftover!==next.leftover)delete next.leftoverCompletedAt;
   if(timeChanged&&(task||Number.isFinite(previous?.focusSeconds)))next.focusSeconds=Math.max(0,Math.round((range.endSlot-range.startSlot)*60000)/1000);
@@ -601,17 +602,16 @@ function saveEvent() {
   if(task){
     if(previous?.leftover!==next.leftover)delete task.leftoverCompletedAt;
     Object.assign(task,{categoryId:next.categoryId,categoryName:next.categoryName,subjectPath:[...next.subjectPath],color:next.color});
-    task.fields={...task.fields,eventName:next.eventName,materialLocation:next.materialLocation,progress:next.progress,summary:next.textContent,notes:next.notes,leftover:next.leftover,mastery:next.mastery,actionType:next.actionTypes[0]||'new',actionTypes:next.actionTypes.length?next.actionTypes:['new']};
+    task.fields={...task.fields,eventName:next.eventName,materialLocation:next.materialLocation,progress:next.progress,summary:next.textContent,notes:next.notes,leftover:next.leftover,mastery:next.mastery,actionType:next.actionTypes[0]||null,actionTypes:next.actionTypes};
     recomputeTaskDuration(task);syncTaskRecords(task);
   }else if(!next.focusTaskId){const deepest=nodes.at(-1),reviewEnabled=next.halfZone==='record'&&next.taskType==='learn'&&deepest?.reviewEnabled!==false;syncGeneratedReviews(next,reviewEnabled);}
   validateConflicts();saveBackup();closeModal('eventModal');state.editingEventId=null;state.editingEventTime=null;renderAll();checkPlanReminders();
 }
 function eventTitle(event){return event?.eventName||event?.knowledgePoint||event?.textContent||event?.categoryName||'学习事件';}
-function reviewSnapshot(event){return{categoryId:event.categoryId,categoryName:event.categoryName,eventName:eventTitle(event),actionTypes:normalizeActionTypes(event.actionTypes),materialLocation:event.materialLocation||'',mastery:event.mastery||'unknown',leftover:event.leftover||'',important:Boolean(event.important),textContent:event.textContent||''};}
+function reviewSnapshot(event){return{categoryId:event.categoryId,categoryName:event.categoryName,eventName:eventTitle(event),actionTypes:normalizeActionTypes(event.actionTypes,false),materialLocation:event.materialLocation||'',mastery:event.mastery||'unknown',leftover:event.leftover||'',important:Boolean(event.important),textContent:event.textContent||''};}
 
-function generateReviews(event){
+function generateReviews(event,baseDate=event.completedDate||event.date){
   if(state.reviews.some(review=>review.sourceEventId===event.id))return;
-  const baseDate=event.completedDate||event.date;
   state.settings.reviewIntervals.forEach((offset,index)=>state.reviews.push({id:uid('review'),sourceEventId:event.id,reviewDate:dateKey(addDays(parseDate(baseDate),offset)),reviewNumber:index+1,intervalDays:offset,...reviewSnapshot(event),completed:false,abandoned:false}));
 }
 
@@ -649,7 +649,7 @@ function renderEventDetail(){
   const event=state.events.find(item=>item.id===state.selectedDetailEventId);if(!event){closeModal('eventDetailModal');return;}
   const task=taskById(event.focusTaskId),subject=subjectById(event.categoryId),reviewSourceId=task?.reviewSourceEventId||event.id;
   const reviews=state.reviews.filter(review=>review.sourceEventId===reviewSourceId).sort((a,b)=>a.reviewNumber-b.reviewNumber);
-  const actions=normalizeActionTypes(event.actionTypes).map(type=>ACTION_TYPE_LABELS[type]).filter(Boolean),leftover=event.leftover||'',resolved=Boolean(event.leftoverCompletedAt);
+  const actions=normalizeActionTypes(event.actionTypes,false).map(type=>ACTION_TYPE_LABELS[type]).filter(Boolean),leftover=event.leftover||'',resolved=Boolean(event.leftoverCompletedAt);
   dom.eventDetailTitle.textContent='事件详情';
   const schedule=reviews.length?reviews.map(review=>`<button class="review-schedule-row ${review.completed?'completed':''} ${review.abandoned?'abandoned':''}" data-detail-review="${review.id}"><b>D${reviewIntervalDays(review,event)}</b><span>${review.reviewDate} · 第 ${review.reviewNumber} 次</span><span class="status">${reviewStatusText(review)}</span></button>`).join(''):'<p class="settings-note">未完成的学习任务不会生成复习排期。</p>';
   const segments=(task?state.events.filter(item=>item.focusTaskId===task.id):[event]).sort((a,b)=>a.date.localeCompare(b.date)||a.startSlot-b.startSlot),totalSeconds=task?.totalSeconds??focusSeconds(event),status=task?taskStatusLabel(task.status):'已完成';
@@ -671,7 +671,7 @@ function renderEventDetail(){
 
 function saveEventLearningDetails(){const event=state.events.find(item=>item.id===state.selectedDetailEventId);if(!event)return;pushHistory();event.notes=document.getElementById('detailLearningNotes')?.value.trim()||'';const task=taskById(event.focusTaskId);if(task){task.fields.notes=event.notes;syncTaskRecords(task);}saveBackup();renderEventDetail();}
 
-function taskFieldsFromEvent(event){const actionTypes=normalizeActionTypes(event.actionTypes);return{eventName:eventTitle(event),materialLocation:event.materialLocation||'',progress:event.progress||'',summary:event.textContent||'',notes:event.notes||'',leftover:event.leftover||'',mastery:event.mastery||'unknown',actionType:actionTypes[0],actionTypes};}
+function taskFieldsFromEvent(event){const actionTypes=normalizeActionTypes(event.actionTypes,false);return{eventName:eventTitle(event),materialLocation:event.materialLocation||'',progress:event.progress||'',summary:event.textContent||'',notes:event.notes||'',leftover:event.leftover||'',mastery:event.mastery||'unknown',actionType:actionTypes[0]||null,actionTypes};}
 function reopenCompletedEvent(id){
   const event=state.events.find(item=>item.id===id);if(!event||event.halfZone!=='record'||(event.taskType||'learn')!=='learn')return false;
   if(eventHasRunningDependency(event)){window.alert('请先暂停这个任务及其关联复习。');return false;}
@@ -724,7 +724,7 @@ function refreshReviewDay(){if(state.reviewDayKey===dateKey(new Date()))return f
 
 function closePlanReminder(){closeModal('planReminderModal');state.pendingPlanReminderId=null;document.title='学习日志时间轴';}
 function showPlanReminder(event){
-  const subject=subjectById(event.categoryId),actions=normalizeActionTypes(event.actionTypes).map((type)=>ACTION_TYPE_LABELS[type]).filter(Boolean);state.pendingPlanReminderId=event.id;dom.planReminderModal.style.setProperty('--plan-color',subject?.color||event.color||'#2f6b4f');dom.planReminderSubject.textContent=event.categoryName||subject?.name||'学习计划';dom.planReminderTime.textContent=`${slotLabel(event.startSlot)} - ${slotLabel(event.endSlot)}`;dom.planReminderTitle.textContent=eventTitle(event);dom.planReminderActions.innerHTML=actions.map((action)=>`<span>${escapeHtml(action)}</span>`).join('');dom.planReminderLocation.textContent=event.materialLocation?`资料定位 · ${event.materialLocation}`:(event.textContent||'准备开始本次计划');document.title=`⏰ ${dom.planReminderTitle.textContent}`;openModal('planReminderModal');playReminderSound();showSystemNotification('计划时间到了',`${event.categoryName||'学习计划'} · ${dom.planReminderTitle.textContent}`);dom.planReminderStartBtn.focus();
+  const subject=subjectById(event.categoryId),actions=normalizeActionTypes(event.actionTypes,false).map((type)=>ACTION_TYPE_LABELS[type]).filter(Boolean);state.pendingPlanReminderId=event.id;dom.planReminderModal.style.setProperty('--plan-color',subject?.color||event.color||'#2f6b4f');dom.planReminderSubject.textContent=event.categoryName||subject?.name||'学习计划';dom.planReminderTime.textContent=`${slotLabel(event.startSlot)} - ${slotLabel(event.endSlot)}`;dom.planReminderTitle.textContent=eventTitle(event);dom.planReminderActions.innerHTML=actions.map((action)=>`<span>${escapeHtml(action)}</span>`).join('');dom.planReminderLocation.textContent=event.materialLocation?`资料定位 · ${event.materialLocation}`:(event.textContent||'准备开始本次计划');document.title=`⏰ ${dom.planReminderTitle.textContent}`;openModal('planReminderModal');playReminderSound();showSystemNotification('计划时间到了',`${event.categoryName||'学习计划'} · ${dom.planReminderTitle.textContent}`);dom.planReminderStartBtn.focus();
 }
 function checkPlanReminders(){
   if(refreshReviewDay())renderReviews();
@@ -758,7 +758,7 @@ function suggestedReviewStart(review,source=reviewSource(review)){const previous
 
 function reviewCard(review){
   const source=reviewSource(review),name=eventTitle(source||review),material=source?.materialLocation??review.materialLocation??'',mastery=review.mastery||source?.mastery||'unknown';
-  const actions=normalizeActionTypes(source?.actionTypes||review.actionTypes),task=state.focusTasks.find(item=>item.reviewId===review.id&&['paused','running'].includes(item.status));
+  const actions=normalizeActionTypes(source?.actionTypes||review.actionTypes,false),task=state.focusTasks.find(item=>item.reviewId===review.id&&['paused','running'].includes(item.status));
   const status=review.completed?'已完成':review.abandoned?'已放弃':task?taskStatusLabel(task.status):review.originalReviewDate&&review.originalReviewDate<review.reviewDate?`由 ${review.originalReviewDate} 顺延`:'';
   return `<article class="review-item ${review.completed?'done':''} ${review.abandoned?'abandoned':''}"><div class="review-topline"><span class="review-meta">${reviewIntervalLabel(review,source)} · 第 ${review.reviewNumber} 次 · ${review.reviewDate}${status?' · '+status:''}</span>${review.important||source?.important?'<span class="review-important">★ 重点</span>':''}</div><button class="review-title-button" data-review-detail="${review.id}"><strong>${escapeHtml(name)}</strong>${material?`<span class="review-material">${escapeHtml(material)}</span>`:''}</button><div class="review-tags">${actions.map(type=>`<span>${escapeHtml(ACTION_TYPE_LABELS[type]||type)}</span>`).join('')}<span class="mastery-badge mastery-${MASTERY_LABELS[mastery]?mastery:'unknown'}">${MASTERY_LABELS[mastery]||'尚未判断'}</span></div><div class="review-actions"><button class="tool-btn primary" data-review-start="${review.id}" ${review.completed||review.abandoned||task?.status==='running'?'disabled':''}>${task?.status==='paused'?'继续复习':task?.status==='running'?'复习中':'开始复习'}</button><button class="tool-btn" data-review-detail="${review.id}">查看详情</button><button class="tool-btn" data-review-complete="${review.id}">${review.completed?'恢复':'直接完成'}</button><button class="tool-btn" data-review-delay="${review.id}">推迟</button><button class="tool-btn" data-review-abandon="${review.id}">${review.abandoned?'恢复':'放弃本次'}</button></div></article>`;
 }
@@ -791,7 +791,7 @@ function reviewHistoryRow(review,currentId){
 function openReviewDetail(id){state.selectedReviewId=id;renderReviewDetail();openModal('reviewDetailModal');}
 function renderReviewDetail(){
   const review=state.reviews.find(item=>item.id===state.selectedReviewId),source=reviewSource(review||{});if(!review||!source){closeModal('reviewDetailModal');return;}
-  const subject=subjectById(source.categoryId),name=eventTitle(source),material=source.materialLocation||review.materialLocation||'未填写',mastery=review.mastery||source.mastery||'unknown',actions=normalizeActionTypes(source.actionTypes||review.actionTypes);
+  const subject=subjectById(source.categoryId),name=eventTitle(source),material=source.materialLocation||review.materialLocation||'未填写',mastery=review.mastery||source.mastery||'unknown',actions=normalizeActionTypes(source.actionTypes||review.actionTypes,false);
   const history=state.reviews.filter(item=>item.sourceEventId===review.sourceEventId).sort((a,b)=>a.reviewNumber-b.reviewNumber);
   dom.reviewDetailTitle.textContent=name;
   dom.reviewDetailBasic.innerHTML=`<div class="review-detail-hero" style="--detail-color:${subject?.color||source.color||'#6b7a72'}"><span>${escapeHtml(source.categoryName||'未分类')}</span><strong>${reviewIntervalLabel(review,source)} · 第 ${review.reviewNumber} 次复习</strong></div><div class="review-detail-facts"><div><span>安排日期</span><b>${review.reviewDate}</b></div><div><span>掌握程度</span><b>${MASTERY_LABELS[mastery]||'尚未判断'}</b></div><div><span>学习动作</span><b>${escapeHtml(actions.map(type=>ACTION_TYPE_LABELS[type]).filter(Boolean).join(' / ')||'未标记')}</b></div></div><label class="review-start-point"><span>本次从哪里开始</span><input id="reviewStartPointInput" type="text" maxlength="100" value="${escapeHtml(suggestedReviewStart(review,source))}" placeholder="例如：讲义 P69" /></label>`;
@@ -894,7 +894,7 @@ async function requestNotifications(){if(!('Notification'in window)){window.aler
 async function showSystemNotification(title,body,force=false){if(!('Notification'in window)||Notification.permission!=='granted'||(!force&&!state.settings.notificationsEnabled))return;const options={body,icon:'icon.svg',badge:'icon.svg',tag:`learning-tool-${title}`,renotify:true};try{if('serviceWorker'in navigator){const registration=await navigator.serviceWorker.ready;await registration.showNotification(title,options);return;}new Notification(title,options);}catch(_){try{new Notification(title,options);}catch(__){}}}
 async function installApp(){const prompt=state.installPrompt;if(!prompt){window.alert(location.protocol==='file:'?'请先通过本地服务器或 HTTPS 打开网页，再用 Edge 的“应用 → 安装此站点”安装。':'当前浏览器尚未提供安装入口，可使用浏览器菜单中的“安装此应用”。');return;}await prompt.prompt();state.installPrompt=null;dom.installAppBtn.classList.add('hidden');}
 function closeFocusPictureInPicture(){state.pipRequest=null;const pip=state.pipWindow;state.pipWindow=null;if(pip&&!pip.closed)pip.close();}
-function clearEvents(){if(!state.events.length||!window.confirm('确认清空全部事件与复习任务？'))return;pushHistory();state.events=[];state.reviews=[];state.focusTasks=[];state.focus=null;state.pendingFocus=null;state.mergeMode=false;state.mergeSelection.clear();clearInterval(state.focusTicker);state.focusTicker=null;saveActiveFocus();closeFocusPictureInPicture();exitImmersion();closePlanReminder();saveBackup();closeModal('settingsModal');renderAll();}
+function clearEvents(){const hasData=state.events.length||state.reviews.length||state.focusTasks.length||state.focus;if(!hasData||!window.confirm('确认清空全部事件与复习任务？'))return;pushHistory();state.events=[];state.reviews=[];state.focusTasks=[];state.focus=null;state.pendingFocus=null;state.mergeMode=false;state.mergeSelection.clear();clearInterval(state.focusTicker);state.focusTicker=null;saveActiveFocus();closeFocusPictureInPicture();exitImmersion();closePlanReminder();saveBackup();closeModal('settingsModal');renderAll();}
 
 function focusEvents(){return state.events.filter(event=>event.halfZone==='record'||(!event.halfZone&&event.taskType==='focus'));}
 function focusSeconds(event){if(Number.isFinite(event.focusSeconds)&&event.focusSeconds>=0)return event.focusSeconds;const seconds=(event.endSlot-event.startSlot)*60;return Number.isFinite(seconds)?Math.max(0,seconds):0;}
@@ -1090,7 +1090,7 @@ function syncTaskRecords(task){
   if(records.some(event=>Object.hasOwn(event,'leftover')&&event.leftover!==(fields.leftover||''))){delete task.leftoverCompletedAt;records.forEach(event=>delete event.leftoverCompletedAt);}
   if(state.focus?.taskId===task.id){Object.assign(state.focus,{categoryId:task.categoryId,categoryName:task.categoryName,subjectPath:task.subjectPath,color:task.color});state.focus.immersiveFields=clone(fields);state.focus.liveNotes=fields.notes||'';saveActiveFocus();}
   state.events.filter(event=>event.focusTaskId===task.id).forEach(event=>{
-    const actionTypes=normalizeActionTypes(fields.actionTypes||fields.actionType);Object.assign(event,{categoryId:task.categoryId,categoryName:task.categoryName,subjectPath:[...(task.subjectPath||[task.categoryId])],color:task.color,eventName:fields.eventName||task.categoryName+'任务',materialLocation:fields.materialLocation||'',progress:fields.progress||'',textContent:fields.summary||'',notes:fields.notes||'',leftover:fields.leftover||'',mastery:fields.mastery||'unknown',actionTypes,taskStatus:task.status});
+    const actionTypes=normalizeActionTypes(fields.actionTypes||fields.actionType,false);Object.assign(event,{categoryId:task.categoryId,categoryName:task.categoryName,subjectPath:[...(task.subjectPath||[task.categoryId])],color:task.color,eventName:fields.eventName||task.categoryName+'任务',materialLocation:fields.materialLocation||'',progress:fields.progress||'',textContent:fields.summary||'',notes:fields.notes||'',leftover:fields.leftover||'',mastery:fields.mastery||'unknown',actionTypes,taskStatus:task.status});
   });
   records.forEach(event=>{const owner=leftoverOwner(event),resolved=owner.leftoverCompletedAt||(owner.focusTaskId===task.id?task.leftoverCompletedAt:null);if(resolved)event.leftoverCompletedAt=resolved;else delete event.leftoverCompletedAt;});
   if(task.reviewSourceEventId){const source=state.events.find(event=>event.id===task.reviewSourceEventId);if(source){state.reviews.filter(review=>review.sourceEventId===source.id).forEach(review=>{const mastery=review.mastery;Object.assign(review,reviewSnapshot(source));if(review.completed)review.mastery=mastery;});syncPausedReviewSource(source);}}
@@ -1112,15 +1112,18 @@ function pauseFocus(endedAt=Date.now()){
   // A segment is written once. Break time is never represented by an event.
   if(task.lastSegmentId!==focus.segmentId){
     const start=Number(focus.startedAt),end=Math.max(start,Number(endedAt));
-    let cursor=start,index=0;
-    do{
-      const date=new Date(cursor),midnight=new Date(date.getFullYear(),date.getMonth(),date.getDate()+1).getTime(),stop=Math.min(end,midnight),seconds=Math.max(0,(stop-cursor)/1000);
-      const startSlot=date.getHours()*60+date.getMinutes()+date.getSeconds()/60+date.getMilliseconds()/60000;
-      const endSlot=stop===midnight?1440:startSlot+seconds/60;
-      const subject=subjectById(task.categoryId),record={id:uid('event'),date:dateKey(date),halfZone:'record',taskType:task.taskType,focusTaskId:task.id,focusSegmentId:focus.segmentId+'_'+index,taskStatus:'paused',eventName:fields.eventName||task.categoryName+'任务',categoryId:task.categoryId,categoryName:task.categoryName,subjectPath:task.subjectPath,startSlot,endSlot:Math.max(startSlot+.00001,endSlot),color:task.color,opacity:subject?.opacity??.86,textSize:subject?.textSize||13,textColor:'#20231f',textOpacity:subject?.textOpacity??.92,focusSeconds:seconds,sourceReviewId:task.reviewId,sourceEventId:task.sourceEventId,sourcePlanEventId:task.planEventId,conflict:false};
-      state.events.push(record);task.segmentEventIds.push(record.id);cursor=stop;index++;
-    }while(cursor<end);
-    task.totalSeconds=(Number(task.totalSeconds)||0)+Math.max(0,(end-start)/1000);task.lastSegmentId=focus.segmentId;task.lastPausedAt=new Date(end).toISOString();
+    if(end>start){
+      let cursor=start,index=0;
+      do{
+        const date=new Date(cursor),midnight=new Date(date.getFullYear(),date.getMonth(),date.getDate()+1).getTime(),stop=Math.min(end,midnight),seconds=Math.max(0,(stop-cursor)/1000);
+        const startSlot=date.getHours()*60+date.getMinutes()+date.getSeconds()/60+date.getMilliseconds()/60000;
+        const endSlot=stop===midnight?1440:startSlot+seconds/60;
+        const subject=subjectById(task.categoryId),record={id:uid('event'),date:dateKey(date),halfZone:'record',taskType:task.taskType,focusTaskId:task.id,focusSegmentId:focus.segmentId+'_'+index,taskStatus:'paused',eventName:fields.eventName||task.categoryName+'任务',categoryId:task.categoryId,categoryName:task.categoryName,subjectPath:task.subjectPath,startSlot,endSlot:Math.max(startSlot+.00001,endSlot),color:task.color,opacity:subject?.opacity??.86,textSize:subject?.textSize||13,textColor:'#20231f',textOpacity:subject?.textOpacity??.92,focusSeconds:seconds,sourceReviewId:task.reviewId,sourceEventId:task.sourceEventId,sourcePlanEventId:task.planEventId,conflict:false};
+        state.events.push(record);task.segmentEventIds.push(record.id);cursor=stop;index++;
+      }while(cursor<end);
+      task.totalSeconds=(Number(task.totalSeconds)||0)+(end-start)/1000;
+    }
+    task.lastSegmentId=focus.segmentId;task.lastPausedAt=new Date(end).toISOString();
   }
   task.status='paused';syncTaskRecords(task);clearInterval(state.focusTicker);state.focusTicker=null;state.focus=null;
   closeFocusPictureInPicture();exitImmersion();
@@ -1233,7 +1236,7 @@ function renderImmersionReviewContext(){
   const review=state.reviews.find(item=>item.id===state.focus?.reviewId),plan=state.events.find(item=>item.id===state.focus?.planEventId),source=review?reviewSource(review):plan;
   if(!source){dom.immersionReviewCard.classList.add('hidden');dom.immersionContent.classList.remove('review-session');return;}
   dom.immersionReviewCard.classList.remove('hidden');dom.immersionContent.classList.add('review-session');
-  dom.immersionReviewCard.innerHTML=`<div class="immersion-review-top">${review?`第 ${review.reviewNumber} 次复习 · ${reviewIntervalLabel(review,source)}`:'学习计划'} · 暂停不会标记完成</div><h3>${escapeHtml(eventTitle(source))}</h3><div class="immersion-review-tags">${normalizeActionTypes(source.actionTypes).map(type=>`<span>${escapeHtml(ACTION_TYPE_LABELS[type])}</span>`).join('')}<span>${escapeHtml(source.materialLocation||'未填写资料定位')}</span></div>`;
+  dom.immersionReviewCard.innerHTML=`<div class="immersion-review-top">${review?`第 ${review.reviewNumber} 次复习 · ${reviewIntervalLabel(review,source)}`:'学习计划'} · 暂停不会标记完成</div><h3>${escapeHtml(eventTitle(source))}</h3><div class="immersion-review-tags">${normalizeActionTypes(source.actionTypes,false).map(type=>`<span>${escapeHtml(ACTION_TYPE_LABELS[type])}</span>`).join('')}<span>${escapeHtml(source.materialLocation||'未填写资料定位')}</span></div>`;
 }
 
 function applyImmersionSettings(){const s=state.settings;dom.immersionContent.classList.toggle('swapped',Boolean(s.immersionSwapped));dom.immersionSwapBtn.setAttribute('aria-pressed',String(Boolean(s.immersionSwapped)));dom.immersionBackdrop.className=`immersion-backdrop theme-${s.immersionTheme}`;dom.immersionBackdrop.style.setProperty('--immersion-opacity',s.immersionOpacity);dom.immersionOverlay.style.setProperty('--immersion-opacity',s.immersionOpacity);dom.immersionBackdrop.style.backgroundImage=s.immersionTheme==='custom'&&s.immersionBackground?`url("${String(s.immersionBackground).replaceAll('\\','\\\\').replaceAll('"','\\"')}")`:'';dom.immersionCountdown.style.setProperty('--countdown-size',`${clamp(Number(s.countdownSize)||30,18,64)}px`);dom.immersionCountdown.classList.remove('position-top','position-bottom');if(s.countdownPosition==='top')dom.immersionCountdown.classList.add('position-top');if(s.countdownPosition==='bottom')dom.immersionCountdown.classList.add('position-bottom');renderImmersionExtras();}
@@ -1284,11 +1287,11 @@ function discardFocusRecord(){dom.focusCompletionStatus.value='paused';saveFocus
 
 function snapshot(){return{currentDate:state.currentDate.toISOString(),settings:clone(state.settings),categories:clone(state.categories),events:clone(state.events),reviews:clone(state.reviews),focusTasks:clone(state.focusTasks),activeFocus:state.focus?clone(state.focus):null};}
 
-function normalizeReviewData(review){const number=Math.max(1,Number(review.reviewNumber)||1),stored=Number(review.intervalDays),preset=Number(state.settings.reviewIntervals[number-1]);return{...review,reviewNumber:number,intervalDays:Number.isFinite(stored)?stored:Number.isFinite(preset)?preset:number,reviewDate:normalizeDate(review.reviewDate),actionTypes:normalizeActionTypes(review.actionTypes)};}
-function normalizeEventData(event){return{...event,date:normalizeDate(event.date),eventName:eventTitle(event),textContent:event.textContent||'',notes:event.notes||'',progress:event.progress||'',actionTypes:normalizeActionTypes(event.actionTypes)};}
+function normalizeReviewData(review){const number=Math.max(1,Number(review.reviewNumber)||1),stored=Number(review.intervalDays),preset=Number(state.settings.reviewIntervals[number-1]);return{...review,reviewNumber:number,intervalDays:Number.isFinite(stored)?stored:Number.isFinite(preset)?preset:number,reviewDate:normalizeDate(review.reviewDate),actionTypes:normalizeActionTypes(review.actionTypes,false)};}
+function normalizeEventData(event){return{...event,date:normalizeDate(event.date),eventName:eventTitle(event),textContent:event.textContent||'',notes:event.notes||'',progress:event.progress||'',actionTypes:normalizeActionTypes(event.actionTypes,false)};}
 
 function normalizeTaskData(task){
-  const fields={eventName:'',materialLocation:'',progress:'',summary:'',notes:'',leftover:'',actionType:'new',mastery:'unknown',...(task.fields||{})},actionTypes=normalizeActionTypes(fields.actionTypes||fields.actionType);fields.actionType=actionTypes[0];fields.actionTypes=actionTypes;return {...task,totalSeconds:Math.max(0,Number(task.totalSeconds)||0),segmentEventIds:Array.isArray(task.segmentEventIds)?task.segmentEventIds:[],fields};
+  const fields={eventName:'',materialLocation:'',progress:'',summary:'',notes:'',leftover:'',actionType:null,mastery:'unknown',...(task.fields||{})},actionTypes=normalizeActionTypes(fields.actionTypes||fields.actionType,false);fields.actionType=actionTypes[0]||null;fields.actionTypes=actionTypes;return {...task,totalSeconds:Math.max(0,Number(task.totalSeconds)||0),segmentEventIds:Array.isArray(task.segmentEventIds)?task.segmentEventIds:[],fields};
 }
 function restore(data){
   clearInterval(state.focusTicker);state.focusTicker=null;state.pendingFocus=null;
@@ -1349,4 +1352,4 @@ function renderAll(){renderDate();renderTimeline();renderReviews();renderFocusSu
 updateFocusDurationUI();
 checkPlanReminders();
 state.planReminderTicker=setInterval(checkPlanReminders,15000);
-if('serviceWorker'in navigator&&/^https?:$/.test(location.protocol))navigator.serviceWorker.register('./sw.js?v=32').catch(()=>{});
+if('serviceWorker'in navigator&&/^https?:$/.test(location.protocol))navigator.serviceWorker.register('./sw.js?v=33').catch(()=>{});
