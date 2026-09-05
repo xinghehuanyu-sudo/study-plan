@@ -1349,4 +1349,4 @@ function renderAll(){renderDate();renderTimeline();renderReviews();renderFocusSu
 updateFocusDurationUI();
 checkPlanReminders();
 state.planReminderTicker=setInterval(checkPlanReminders,15000);
-if('serviceWorker'in navigator&&/^https?:$/.test(location.protocol))navigator.serviceWorker.register('./sw.js?v=31').catch(()=>{});
+if('serviceWorker'in navigator&&/^https?:$/.test(location.protocol))navigator.serviceWorker.register('./sw.js?v=32').catch(()=>{});

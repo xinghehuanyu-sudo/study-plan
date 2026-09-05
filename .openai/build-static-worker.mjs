@@ -9,6 +9,7 @@ const files = [
   ["/sw.js", "sw.js", "text/javascript; charset=utf-8"],
   ["/manifest.webmanifest", "manifest.webmanifest", "application/manifest+json; charset=utf-8"],
   ["/icon.svg", "icon.svg", "image/svg+xml; charset=utf-8"],
+  ["/og.png", "og.png", "image/png"],
 ];
 
 const assets = {};

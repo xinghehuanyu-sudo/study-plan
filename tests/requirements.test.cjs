@@ -466,6 +466,15 @@ test('HTML, service worker and cached local assets use one consistent resource v
   assert.ok(fs.existsSync(path.join(root,manifest.start_url)));for(const icon of manifest.icons)assert.ok(fs.existsSync(path.join(root,icon.src)));
 });
 
+test('site metadata uses the product name and an absolute social preview', () => {
+  assert.match(html,/<title>学习日志时间轴<\/title>/);
+  assert.match(html,/<meta property="og:title" content="学习日志时间轴" \/>/);
+  assert.match(html,/<meta name="twitter:card" content="summary_large_image" \/>/);
+  const image=/<meta property="og:image" content="([^"]+)" \/>/.exec(html)?.[1];
+  assert.equal(image,'https://learning-journal-20260901.xinghehuanyu.chatgpt.site/og.png');
+  assert.ok(fs.existsSync(path.join(root,'og.png')));
+});
+
 function submitDialog(h, value) { h.nodes.get('inputDialogValue').value=value; h.nodes.get('inputDialogForm').emit('submit'); }
 
 test('browser QA: subject creation uses an inline form, validates blank/duplicate names and supports undo', () => {
