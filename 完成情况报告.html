@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>学习日志网页 · 需求完成情况验证报告</title>
+<style>
+:root{--ink:#22302a;--muted:#69756d;--line:#dde5df;--bg:#f4f7f4;--card:#fff;--ok:#1f7a44;--okbg:#e3f4e8;--warn:#9a6b00;--warnbg:#fff3d6;--bad:#b3261e;--badbg:#fbe4e2;--info:#2455a4;--infobg:#e7eefb;--sup:#6b4fa0;--supbg:#efe9fa}
+*{box-sizing:border-box}
+body{margin:0;font-family:"Microsoft YaHei","PingFang SC",system-ui,sans-serif;background:var(--bg);color:var(--ink);line-height:1.6}
+.wrap{max-width:1180px;margin:0 auto;padding:28px 20px 60px}
+h1{font-size:26px;margin:0 0 6px}
+h2{font-size:19px;margin:36px 0 12px;padding-left:10px;border-left:4px solid var(--ok)}
+.sub{color:var(--muted);font-size:14px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:20px 0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.card b{display:block;font-size:26px}
+.card span{font-size:13px;color:var(--muted)}
+.tag{display:inline-block;font-size:12px;padding:1px 8px;border-radius:99px;white-space:nowrap}
+.t-ok{background:var(--okbg);color:var(--ok)}
+.t-warn{background:var(--warnbg);color:var(--warn)}
+.t-sup{background:var(--supbg);color:var(--sup)}
+.t-info{background:var(--infobg);color:var(--info)}
+table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden;font-size:13.5px}
+th,td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th{background:#eef3ee;font-weight:600;white-space:nowrap;position:sticky;top:0}
+tr:last-child td{border-bottom:none}
+td.ev{font-family:Consolas,monospace;font-size:12px;color:var(--muted);word-break:break-all}
+td.id{white-space:nowrap;font-family:Consolas,monospace;font-size:12.5px}
+.note{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--info);border-radius:8px;padding:12px 16px;margin:10px 0;font-size:14px}
+.warnbox{border-left-color:var(--warn)}
+.filters{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}
+.filters button{border:1px solid var(--line);background:var(--card);border-radius:99px;padding:5px 14px;font-size:13px;cursor:pointer;color:var(--ink)}
+.filters button.on{background:var(--ok);border-color:var(--ok);color:#fff}
+select{border:1px solid var(--line);border-radius:8px;padding:5px 8px;font-size:13px;background:#fff;color:var(--ink)}
+footer{margin-top:40px;color:var(--muted);font-size:12.5px}
+code{background:#eef1ee;padding:1px 5px;border-radius:5px;font-size:12.5px}
+@media(max-width:760px){th,td{padding:7px 6px;font-size:12.5px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>学习日志网页 · 需求完成情况验证报告</h1>
+<p class="sub">需求来源：《学习日志网页搭建需求清单》主表 48 条（2026-08-20 ~ 2026-08-31）｜验证方式：不采信表内「状态」列，逐条对照源码 <code>app.js / index.html / styles.css / sw.js</code> 实际实现（辅以 tests/requirements.test.cjs 与 git 历史佐证）｜验证日期：2026-09-06</p>
+
+<div class="cards">
+<div class="card"><b>48</b><span>需求总数</span></div>
+<div class="card"><b style="color:var(--ok)">46</b><span>已实现</span></div>
+<div class="card"><b style="color:var(--warn)">1</b><span>部分实现（052，平台边界）</span></div>
+<div class="card"><b style="color:var(--sup)">1</b><span>已失效（011，被042取代）</span></div>
+<div class="card"><b style="color:var(--info)">8</b><span>表内状态滞后条目</span></div>
+</div>
+
+<h2>一、总体结论</h2>
+<div class="note">
+<b>48 条需求逐条验证完毕，未发现"未实现"条目。</b>其中 46 条已实现、1 条部分实现、1 条因后续需求整体下线而失效。表 G 列「状态」有 <b>8 条与代码实际不符（均为滞后）</b>：<b>20260828-051（学习动作改新知/运用/记诵）标"待开发"、20260830-065/066/067、20260831-068/069/070 标"待评估"——经核实代码均已实现</b>；<b>20260820-011（闪卡覆盖 bug）标"搁置"——因 20260826-042 闪卡功能整体下线，该 bug 已无从复现，建议直接关闭</b>。其余 40 条标"已完成"的条目与代码事实一致，无虚报。
+</div>
+
+<h2>二、需求间矛盾与裁定（以最新日期为准）</h2>
+<table>
+<thead><tr><th>矛盾对</th><th>旧条款</th><th>新条款（生效）</th><th>裁定与代码现状</th></tr></thead>
+<tbody>
+<tr><td>001/013 vs 039</td><td>001、013 要求保留「知识点名称」独立字段</td><td>039（08-26）取消独立知识点字段，统一用事件名称</td><td>以 039 为准。已实现：<code>index.html:135,358</code> 仅有事件名称；<code>app.js:610</code> knowledgePoint 仅作旧数据兜底。</td></tr>
+<tr><td>005 vs 032</td><td>005 要求资料定位小字号「靠右」</td><td>032（08-26）要求资料定位「紧跟事件名称」</td><td>以 032 为准。已实现：<code>app.js:355</code> 资料定位直接拼接在事件名后。</td></tr>
+<tr><td>032 vs 063</td><td>032 允许同行无后项时换行、行高自适应</td><td>063（08-29）单行省略号截断 + 每小时固定行高</td><td>以 063 为准。已实现：<code>app.js:282</code> 固定行高，<code>app.js:356-366</code> 恒单行截断。</td></tr>
+<tr><td>011/026闪卡项 vs 042</td><td>011 要求修复添加闪卡覆盖 bug；026 含"完成后生成闪卡"</td><td>042（08-26）闪卡功能全部下线、保留历史数据</td><td>以 042 为准。全库无任何闪卡入口/计算（0 命中），历史 flashcards 字段原样保留（<code>app.js:1291</code>）。011 失效，026 其余子项已实现。</td></tr>
+<tr><td>005图标 vs 051</td><td>005 时代学习动作为 视频/习题/背诵/阅读/复习 多选</td><td>051（08-28）改为 新知/运用/记诵 单选 + 线性图标 + 默认新知</td><td>以 051 为准。已实现：<code>app.js:4-6</code>（含旧数据迁移映射 video→new、practice→apply、reading/review 剔除）、<code>index.html:141-143,362</code>。</td></tr>
+<tr><td>003 vs 049</td><td>003 筛选项与「每日复习清单」同行、标题缩小</td><td>049（08-28）「每日复习清单」更名「复习清单」、移除 REVIEW 英文标题</td><td>两者叠加生效。已实现：<code>index.html:118</code> 标题即"复习清单"，当日/本周/全部同行。</td></tr>
+</tbody>
+</table>
+
+<h2>三、逐条验证明细（48 条）</h2>
+<div class="filters" id="filters">
+<button data-f="all" class="on">全部</button>
+<button data-f="已实现">已实现</button>
+<button data-f="部分实现">部分实现</button>
+<button data-f="已失效">已失效</button>
+<button data-f="lag">表内状态滞后</button>
+<button data-f="conflict">被后续需求修正</button>
+<select id="fmod"><option value="">全部模块</option></select>
+</div>
+<table id="tbl">
+<thead><tr><th>编号</th><th>优先级</th><th>模块</th><th>标题</th><th>表内状态</th><th>验证结论</th><th>关键代码证据</th><th>备注</th></tr></thead>
+<tbody></tbody>
+</table>
+
+<h2>四、需关注事项</h2>
+<div class="note warnbox">
+<ol style="margin:0;padding-left:20px">
+<li><b>20260828-052 悬浮小窗（部分实现）</b>：已按 <code>200×150</code> 请求 Document PiP 并实现三行固定排版与图标 tooltip（<code>app.js:1257-1269</code>）；但"移除顶部来源/网址标识"与强制最小尺寸由浏览器控制，网页无法保证，属平台边界而非缺陷。</li>
+<li><b>20260820-003 "全屏"实现方式</b>：为应用内 fixed 覆盖层（<code>styles.css:124</code>），非浏览器原生 Fullscreen API；且全屏态标题反向放大至 18px，与"缩小"字面相反（侧栏基线确已缩小，需求目标达成）。</li>
+<li><b>20260820-018 / 20260828-050 运行级表现</b>：Edge PWA 后台冻结准点提醒、110% 缩放无强制滚动，静态代码逻辑完备（时间戳到期校验、resume 补查、分栏响应式），但完全冻结时准点提醒受平台限制，建议做一次系统级实测。</li>
+<li><b>轻微残留</b>：<code>styles.css:148-151</code> 残留已下线的"建议/遗留"卡片死样式；<code>app.js:833</code> moveReviewToToday 为不可达死代码；README.md:151 关于 070"到期倒计时转正计时"的描述与 <code>app.js:1136</code> 实际行为不一致（文档瑕疵）。</li>
+<li><b>状态同步建议</b>：请将 Excel G 列更新为——051、065、066、067、068、069、070 → 已完成；011 → 关闭（被 042 取代）。</li>
+</ol>
+</div>
+
+<footer>验证范围：E:\学习计划 工作区当前版本（app.js 1355 行、index.html、styles.css、sw.js、tests/requirements.test.cjs、git 历史）。本页为静态报告，可直接用浏览器打开，或经本地服务器浏览；学习日志应用本体：http://localhost:8765/index.html</footer>
+</div>
+<script>
+const R=[
+["20260820-001","中","专注计时","沉浸输入卡片+Tab快速切换","已完成","已实现","index.html:354-363; app.js:532-537,1222,1231","字段「知识点名称」被039以「事件名称」取代","conflict"],
+["20260820-002","高","复习清单","多批次复习联动顺延","已完成","已实现","app.js:722(carryOverReviews),834-841; tests:178,497","n顺延→n+1/n+2同delta平移；已完成批次不联动",""],
+["20260820-003","高","复习清单","全屏按钮+筛选同行+标题缩小","已完成","已实现","index.html:118; app.js:747; styles.css:124,116,96","为CSS覆盖层非原生Fullscreen；全屏态标题18px反向放大",""],
+["20260820-004","中","事件卡片","分组抽屉折叠面板","已完成","已实现","index.html:132,137,150,155(4个details); styles.css:199-205","双列压缩留白，重要度集中在03组并以★入时间轴",""],
+["20260820-005","中","时间轴区","多级联动筛选+行排版改图标左对齐","已完成","已实现","app.js:354-355,369,379-382,311","「资料定位靠右」被032「紧跟事件名」取代","conflict"],
+["20260820-006","低","事件卡片","学科合并为多级筛选输入框","已完成","已实现","index.html:138-139; app.js:554-557,594","datalist自动生成分层路径，隐藏select仅作内部状态",""],
+["20260820-007","低","学习统计","学科包含关系统计","已完成","已实现","app.js:899,911-916,934; tests:238-255","一级含全部子层级、父子同选不重复计、计划不计入",""],
+["20260820-009","高","专注计时","卡片重构+抽屉分类+眼睛收纳","已完成","已实现","index.html:48-54,95,100,102; app.js:1058,1208,744,515; styles.css:81,90","四子项均有证据：原框选时长/未开始隐藏时钟/待复习入顶栏/收纳后清单变高",""],
+["20260820-010","低","学科管理","本月日历圆点缩小20px","已完成","已实现","styles.css:348(.mini-day 20×20)","含1px边框(box-sizing)",""],
+["20260820-011","中","事件卡片","修复添加闪卡覆盖旧闪卡","搁置","已失效","全库「闪卡」0命中; app.js:1291保留历史字段","被042闪卡整体下线取代，bug无从复现，建议关闭","conflict"],
+["20260820-013","中","事件卡片","复习排期移至最下方+区分名称字段","已完成","已实现","app.js:648-661(review-schedule-final末位); tests:769","知识点字段区分部分被039取消，仅验排期位置，成立","conflict"],
+["20260820-016","低","设置","7-22紧凑视图可开关复原+刷新保持","已完成","已实现","index.html:187; app.js:128,886-887,1310; tests:437","开关前快照hiddenHours/startHour/hourHeight可逆恢复",""],
+["20260820-017","中","设置","重载配置按钮全局重渲染","已完成","已实现","index.html:216; app.js:129,888,1312-1321; tests:451","不整页刷新、含反馈文案；活动计时被有意保留",""],
+["20260820-018","中","专注计时","PWA后台到期提醒","已完成","已实现","app.js:1200-1202,1270,893-894,1195,221; sw.js:34-40","真实时间戳判到期+resume补查+SW通知；系统级实测待做",""],
+["20260820-019","低","专注计时","沉浸右上角置顶悬浮小窗","已完成","已实现","index.html:341; app.js:1247-1263","documentPictureInPicture检测，不支持时隐藏按钮，可切回沉浸",""],
+["20260821-020","低","时间轴区","删复习颜色设置改箭头样式","已完成","已实现","index.html:192-194(粗细/箭头尖/虚线); app.js:371-373","全库「复习颜色」0命中",""],
+["20260821-023","低","专注计时","沉浸倒数日字号设置生效","已完成","已实现","index.html:203; app.js:875,1242,865; styles.css:406","CSS变量--countdown-size，保存+重开均应用",""],
+["20260824-026","高","专注计时","完成/未完接续+时长累加+延后生成复习","已完成","已实现","index.html:327-331; app.js:1277-1284,1171,1132,1124,1081","「生成闪卡」子项被042取消，其余全部成立","conflict"],
+["20260825-027","高","专注计时","沉浸输入字号/时钟缩小/结束按钮","已完成","已实现","styles.css:441,429,778(136px级→64px级); index.html:351","git对比确认数字尺寸减半级缩小",""],
+["20260825-028","中","UI布局","日期切换控件迁移顶栏(←/今/→)","已完成","已实现","index.html:42-52; app.js:142-144,745","右栏原日期区已移除，无残留",""],
+["20260825-030","低","学科管理","年度热力图圆点对齐日历/白色无记录","已完成","已实现","styles.css:357(=348同为20px); app.js:1053","无记录白色，有记录rgba按秒数深浅",""],
+["20260826-032","高","时间轴区","跨小时文本放最大空余行+同行折叠","已完成","已实现","app.js:342-349,346,355,348,417","其换行自适应增高被063固定行高+省略号取代","conflict"],
+["20260826-034","高","复习清单","同行加粗/去建议/掌握色标","已完成","已实现","app.js:763; styles.css:720-726(灰红黄绿)","「建议」无任何JS输出（CSS残留死样式）",""],
+["20260826-039","高","复习清单","取消知识点字段+信息源统一","已完成","已实现","index.html:135,358; app.js:610,565,1065,1153,759-763; tests:78","摘要不再默认填充；eventTitle贯穿录入/时间轴/清单",""],
+["20260826-042","高","闪卡","闪卡功能整体下线","已完成","已实现","入口/菜单0命中; app.js:1291保留flashcards旧字段; tests:79,115-121","历史数据不删、不再执行闪卡计算",""],
+["20260827-046","高","专注计时","全部任务暂停/继续/放弃规则","已完成","已实现","app.js:1106-1131,1079-1086,1132,1139-1147,1165-1173","暂停即写时间轴分段事件；学习完成才生成复习",""],
+["20260828-049","高","UI布局","压缩留白/改名复习清单/删FOCUS·REVIEW/三列","已完成","已实现","styles.css:71,793-797; index.html:78,118; app.js:106; git e51ef07","三列布局仅≥1000px生效，窄屏自动回退堆叠",""],
+["20260828-050","中","沉浸界面","左右分栏+可调换+110%缩放适配","已完成","已实现","index.html:341-353; app.js:107; styles.css:772-776,802-810","110%实测属运行级，文档记录1164×655等通过",""],
+["20260828-051","高","沉浸界面","学习动作改新知/运用/记诵单选","待开发","已实现","app.js:4-6,233-234,597,1065,1221; index.html:141-143,362; styles.css:213; tests:575-592","★表内状态滞后：实已实现。旧动作迁移映射+默认新知+线性SVG图标","lag"],
+["20260828-052","低","沉浸界面","悬浮小窗最小形态200×150+图标化","已完成","部分实现","app.js:1257(requestWindow 200×150),1260,1269","三行排版/图标tooltip已备；来源标识与尺寸由浏览器控制，属平台边界",""],
+["20260828-053","低","月度视图","时长右置+10梯度+文字加深","已完成","已实现","app.js:844-845,852; styles.css:744-747; index.html:227","0h不显示；0-1h与1-2h共用最浅档（已知折衷）",""],
+["20260828-054","中","UI布局","单列堆叠专注可侵占复习区","已完成","已实现","styles.css:81,87(max-content行),713,736(间距9→4px); tests:624",""],
+["20260828-055","中","学习统计","默认本日+复习斜线区分+数值+占比","已完成","已实现","app.js:905,928,939,958,962-971,993-1000; tests:630-651","悬浮弹窗显示学习/复习各自时长",""],
+["20260828-056","中","学习统计","学科层级下拉复选联动","已完成","已实现","app.js:912-916,918-927; styles.css:760; tests:653-668","勾一级全选二级、取消清空子树、半选indeterminate",""],
+["20260828-057","中","学习日报","日报图片高清化","已完成","已实现","app.js:1327-1334(scale=2 PNG),382,1331; tests:670","正文#333/#444、关键数字800字重",""],
+["20260828-058","中","复习清单","按学科分组折叠","已完成","已实现","app.js:771-779,59; styles.css:738-742","展开态页面内记忆，未持久化到备份",""],
+["20260828-059","中","复习清单","当日已完成分组(末位/折叠/暗淡/恢复)","已完成","已实现","app.js:770,781,763,821; styles.css:136(.done opacity)","恢复后回到所查看当日待复习",""],
+["20260829-060","高","时间轴区","多选合并接续+重生成复习","已完成","已实现","app.js:434,455-495,463,487; index.html:68-74; tests:735-753","限记录区学习任务/同层级/选全多段/拒绝运行中",""],
+["20260829-061","高","时间轴区","已完成事件回退未完成","已完成","已实现","index.html:310; app.js:675-685,626-633; tests:754-765","同步删排期/弃复习、保留事件内容、入撤销历史",""],
+["20260829-062","低","事件卡片","去重字段+顺序+秒级精度+总时长","已完成","已实现","app.js:656-661,250-253; styles.css:373; tests:769","名称/资料仅1份居顶；底层毫秒精度保留、显示舍入到秒",""],
+["20260829-063","中","时间轴区","省略号截断+固定行高+tooltip","已完成","已实现","app.js:356-366,282,429-431","仅确实截断时出tooltip",""],
+["20260829-064","中","时间轴区","右键菜单自动上下翻转","已完成","已实现","app.js:443-446; styles.css:410; tests:780-781","含极小视口max-height兜底",""],
+["20260830-065","低","学习日报","日报/统计日期左右箭头切换","待评估","已实现","index.html:261,240; app.js:183-186,931,1326; tests:784","★表内状态滞后：已实现，按日/周/月/年跨度平移","lag"],
+["20260830-066","中","学习统计","二级学科下拉被遮挡修复","待评估","已实现","styles.css:752-753,760(z-index:80),628; tests:790","★表内状态滞后。溢出浮层+内部滚动；「自动翻转」未做但原文为'或'","lag"],
+["20260830-067","中","学习统计","全月/全年默认完整展示免滚动","待评估","已实现","styles.css:750-751; app.js:995-1001,951-953; tests:645","取消横滚、标签按宽度自适应抽样、dpr重绘","lag"],
+["20260831-068","高","合并任务","自动勾选同时段+复习重生成策略","待评估","已实现","app.js:465-477,495; index.html:71; tests:794-805","★表内状态滞后。三级基准(最少次数→最新日期→第一个)逐条对应","lag"],
+["20260831-069","中","专注计时","「学到哪」输入+进度同步显示","待评估","已实现","index.html:356-357,145-146; app.js:1081,657,1065,1231,1280","★表内状态滞后。沉浸卡/事件弹窗/未完成列表/事件详情四处同步","lag"],
+["20260831-070","低","专注计时","继续时按计时类型重置起始值","待评估","已实现","app.js:1132-1137(elapsedBefore:0,保留设定时长),1212","★表内状态滞后。README:151有一处与代码不符的文档描述","lag"]
+];
+const tb=document.querySelector('#tbl tbody');
+const fmod=document.getElementById('fmod');
+[...new Set(R.map(r=>r[2]))].forEach(m=>{const o=document.createElement('option');o.value=m;o.textContent=m;fmod.append(o)});
+let filt='all';
+function tagOf(v){return v==='已实现'?'<span class="tag t-ok">已实现</span>':v==='部分实现'?'<span class="tag t-warn">部分实现</span>':'<span class="tag t-sup">已失效(被取代)</span>'}
+function render(){
+  const m=fmod.value;
+  tb.innerHTML=R.filter(r=>{
+    if(m&&r[2]!==m)return false;
+    if(filt==='all')return true;
+    if(filt==='lag')return r[8]==='lag';
+    if(filt==='conflict')return r[8]==='conflict';
+    return r[5]===filt;
+  }).map(r=>`<tr><td class="id">${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td><td>${r[3]}</td><td>${r[4]}${r[8]==='lag'?' <span class="tag t-info">滞后</span>':''}</td><td>${tagOf(r[5])}</td><td class="ev">${r[6]}</td><td>${r[7]||'—'}</td></tr>`).join('');
+}
+document.querySelectorAll('#filters button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#filters button').forEach(x=>x.classList.remove('on'));b.classList.add('on');filt=b.dataset.f;render()});
+fmod.onchange=render;render();
+</script>
+</body>
+</html>
